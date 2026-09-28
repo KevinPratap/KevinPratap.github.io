@@ -188,11 +188,26 @@ export class Ember {
       if (Math.random() < c * 0.6) this.spark(st.ox, st.oy, rand(0, TAU), rand(200, 520), { life: 0.3 });
       sfx.loop('charge', c);
       Post.wantDim(c * 0.5);
+      Post.wantZoom(c * 0.08, st.ox, st.oy);
       if (c > 0.85) overlay.speedLines(((c - 0.85) / 0.15) * 0.6, st.ox, st.oy);
       level = Math.max(level, 0.35 + c * 1.3);
     }
     st.trail.update(time);
+    if (h.present) this.fingerFlames(h, dt);
     return Math.max(level, this.updateJet(st, h, dt, time));
+  }
+
+  // Small flames always licking off the fingertips: the hand is on fire.
+  fingerFlames(h, dt) {
+    for (const i of [4, 8, 12, 16, 20]) {
+      if (Math.random() > dt * 9) continue;
+      const p = h.pts[i];
+      this.ctx.particles.spawn({
+        x: p.x + rand(-3, 3), y: p.y + rand(-3, 3), vx: rand(-20, 20) + h.vx * 0.2, vy: rand(-160, -90),
+        grav: -200, drag: 1.5, life: rand(0.25, 0.45), c: pick(FIRE), bright: rand(0.8, 1.3),
+        size: rand(6, 10), size1: 2, fade: 1, flicker: 0.4,
+      });
+    }
   }
 
   // ---------- Dragon Fire ----------
@@ -333,6 +348,7 @@ export class Ember {
     if (power > 1.5) {
       Post.impact(0.09, [1, 0.94, 0.86]);
       this.lines = { t: 0.4, x, y };
+      overlay.crack(x, y, 1.1);
     }
     const n = Math.floor(70 * power);
     for (let i = 0; i < n; i++) this.spark(x, y, rand(0, TAU), rand(400, 1400) * power, { grav: 500 });
@@ -377,6 +393,7 @@ export class Ember {
       if (Math.random() < 0.8) this.spark(n.mid.x, n.mid.y, rand(0, TAU), rand(150, 450), { life: 0.25 });
       this.ctx.sfx.loop('charge', 0.4 + build * 0.5);
       Post.wantDim(build * 0.4);
+      Post.wantZoom(build * 0.13, n.mid.x, n.mid.y);
       Post.shake(dt * 0.5 * build);
     }
   }
@@ -402,6 +419,8 @@ export class Ember {
       this.ember(x, y, { vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: rand(8, 16), life: rand(0.6, 1.3) });
     }
     overlay.callout('爆炎', 'Nova Burst', { big: true });
+    overlay.crack(x, y, 1.4);
+    Post.freeze(0.1);
     this.lines = { t: 0.5, x, y };
     sfx.play('nova');
     this.ctx.onMove(2);
@@ -454,6 +473,7 @@ export class Ember {
       if (Math.random() < w.level) this.spark(w.x + rand(-0.5, 0.5) * w.w, w.y - rand(0, 0.6) * H, -Math.PI / 2 + rand(-0.4, 0.4), rand(200, 600), { grav: -200 });
       sfx.loop('roar', w.level);
       Post.wantDim(0.4 * w.level);
+      Post.wantZoom(0.05 * w.level, w.x, w.y - H * 0.4);
       Post.shake(dt * 0.6 * w.level);
       overlay.letterbox(w.level);
       levels[0] = Math.max(levels[0], 0.5 + w.level);

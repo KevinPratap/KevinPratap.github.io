@@ -51,16 +51,47 @@ function extensions(p, out, is3d) {
 
 const pt = () => ({ x: 0, y: 0 });
 
+// One Euro filter: heavy smoothing when a point is slow (kills camera
+// jitter), almost none when it moves fast (no lag on flicks).
+class OneEuro {
+  constructor(minCutoff, beta) { this.minCutoff = minCutoff; this.beta = beta; this.x = null; this.dx = 0; }
+  static alpha(cutoff, dt) { const r = 2 * Math.PI * cutoff * dt; return r / (r + 1); }
+  reset(x) { this.x = x; this.dx = 0; }
+  filter(x, dt) {
+    if (this.x === null || dt <= 0) { this.x = x; return x; }
+    const dx = (x - this.x) / dt;
+    this.dx += (dx - this.dx) * OneEuro.alpha(1.0, dt);
+    const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
+    this.x += (x - this.x) * OneEuro.alpha(cutoff, dt);
+    return this.x;
+  }
+}
+
+// A boolean that has to hold for `hold` seconds before it flips, so one
+// noisy frame never starts or cancels a move.
+class Debounced {
+  constructor(on = 0.07, off = 0.1) { this.v = false; this.t = 0; this.on = on; this.off = off; }
+  update(raw, dt) {
+    if (raw === this.v) { this.t = 0; return this.v; }
+    this.t += dt;
+    if (this.t >= (raw ? this.on : this.off)) { this.v = raw; this.t = 0; }
+    return this.v;
+  }
+  set(v) { this.v = v; this.t = 0; }
+}
+
 export class HandState {
   constructor(slot) {
     this.slot = slot;
     this.present = false;
     this.target = Array.from({ length: 21 }, pt);
     this.pts = Array.from({ length: 21 }, pt);
+    this.filters = Array.from({ length: 42 }, () => new OneEuro(CONFIG.euroMinCutoff, CONFIG.euroBeta));
     this.cx = 0; this.cy = 0;
     this.vx = 0; this.vy = 0;
     this.speed = 0;
-    this.scale = 80; this.scalePrev = 80; this.scaleRate = 0;
+    this.scale = 80; this.scaleRate = 0;
+    this.detCx = 0; this.detCy = 0; this.detScale = 80; this.sinceDet = 0;
     this.open = 0.5; this.openTarget = 0.5;
     this.ext = [0.5, 0.5, 0.5, 0.5]; this.extT = [0.5, 0.5, 0.5, 0.5];
     this.point = false; this.pointTime = 0; this.two = false; this.twoTime = 0;
@@ -70,18 +101,51 @@ export class HandState {
     this.flick = false; this.thrust = false;
     this.justAppeared = false; this._appeared = false; this._fresh = true;
     this.prevSpeed = 0; this.prevRate = 0; this.flickCool = 0; this.thrustCool = 0;
+    this.db = { fist: new Debounced(), open: new Debounced(), cup: new Debounced(0.06, 0.12),
+      point: new Debounced(0.08, 0.12), two: new Debounced(0.08, 0.12) };
   }
 
-  ingest(lm, wl) {
-    for (let i = 0; i < 21; i++) Projector.toScreen(lm[i].x, lm[i].y, this.target[i]);
+  // Palm center of a raw detection, for matching detections to slots.
+  static palm(lm) {
+    const o = { x: 0, y: 0 }, t = { x: 0, y: 0 };
+    for (const i of [0, 5, 9, 13, 17]) { Projector.toScreen(lm[i].x, lm[i].y, t); o.x += t.x / 5; o.y += t.y / 5; }
+    return o;
+  }
+
+  ingest(lm, wl, dtDet) {
+    const fresh = !this.present;
+    for (let i = 0; i < 21; i++) {
+      Projector.toScreen(lm[i].x, lm[i].y, this.target[i]);
+      const fx = this.filters[i * 2], fy = this.filters[i * 2 + 1];
+      if (fresh) { fx.reset(this.target[i].x); fy.reset(this.target[i].y); }
+      else { this.target[i].x = fx.filter(this.target[i].x, dtDet); this.target[i].y = fy.filter(this.target[i].y, dtDet); }
+    }
     this.openTarget = wl ? extensions(wl, this.extT, true) : extensions(this.target, this.extT, false);
-    if (!this.present) {
-      for (let i = 0; i < 21; i++) { this.pts[i].x = this.target[i].x; this.pts[i].y = this.target[i].y; }
+
+    // Motion is measured once per detection on filtered points, not per
+    // render frame, so speed is steady and "still" really means still.
+    const T = this.target;
+    const cx = (T[0].x + T[5].x + T[9].x + T[13].x + T[17].x) / 5;
+    const cy = (T[0].y + T[5].y + T[9].y + T[13].y + T[17].y) / 5;
+    const sc = Math.max(Math.hypot(T[0].x - T[9].x, T[0].y - T[9].y), Math.hypot(T[5].x - T[17].x, T[5].y - T[17].y) * 1.45, 12);
+    if (fresh) {
+      for (let i = 0; i < 21; i++) { this.pts[i].x = T[i].x; this.pts[i].y = T[i].y; }
       this.open = this.openTarget;
       for (let i = 0; i < 4; i++) this.ext[i] = this.extT[i];
+      this.vx = 0; this.vy = 0; this.scaleRate = 0;
+      this.scale = sc; this.cx = cx; this.cy = cy;
+      this.prevSpeed = 0; this.prevRate = 0;
+      for (const d of Object.values(this.db)) d.set(false);
       this._appeared = true;
-      this._fresh = true;
+    } else if (dtDet > 0) {
+      const k = 1 - Math.exp(-CONFIG.velSmooth * dtDet);
+      this.vx += ((cx - this.detCx) / dtDet - this.vx) * k;
+      this.vy += ((cy - this.detCy) / dtDet - this.vy) * k;
+      const rate = (sc - this.detScale) / (this.detScale * dtDet);
+      this.scaleRate += (rate - this.scaleRate) * k;
     }
+    this.detCx = cx; this.detCy = cy; this.detScale = sc;
+    this.sinceDet = 0;
     this.present = true;
     this.lostTime = 0;
   }
@@ -89,7 +153,7 @@ export class HandState {
   miss(dt) {
     if (!this.present) return;
     this.lostTime += dt;
-    if (this.lostTime > 0.22) {
+    if (this.lostTime > CONFIG.lostGrace) {
       this.present = false;
       this.speed = 0; this.vx = 0; this.vy = 0; this.scaleRate = 0;
       this.fist = this.isOpen = this.cupped = this.still = this.point = this.two = false;
@@ -104,36 +168,21 @@ export class HandState {
     this._appeared = false;
     if (!this.present || dt <= 0) return;
 
+    // Between detections, lead the target along the measured velocity so
+    // motion stays fluid at 60fps; during a dropout, coast and slow down.
+    this.sinceDet += dt;
+    const lead = Math.min(this.sinceDet, 0.05);
+    const coast = this.lostTime > 0 ? Math.exp(-this.lostTime * 8) : 1;
+    const ox = this.vx * lead * coast, oy = this.vy * lead * coast;
     const k = 1 - Math.exp(-CONFIG.follow * dt);
     for (let i = 0; i < 21; i++) {
-      this.pts[i].x += (this.target[i].x - this.pts[i].x) * k;
-      this.pts[i].y += (this.target[i].y - this.pts[i].y) * k;
+      this.pts[i].x += (this.target[i].x + ox - this.pts[i].x) * k;
+      this.pts[i].y += (this.target[i].y + oy - this.pts[i].y) * k;
     }
     const p = this.pts;
-    const cx = (p[0].x + p[5].x + p[9].x + p[13].x + p[17].x) / 5;
-    const cy = (p[0].y + p[5].y + p[9].y + p[13].y + p[17].y) / 5;
-    const sc = Math.max(
-      Math.hypot(p[0].x - p[9].x, p[0].y - p[9].y),
-      Math.hypot(p[5].x - p[17].x, p[5].y - p[17].y) * 1.45,
-      12,
-    );
-
-    if (this._fresh) {
-      this.cx = cx; this.cy = cy;
-      this.vx = 0; this.vy = 0;
-      this.scale = sc; this.scalePrev = sc; this.scaleRate = 0;
-      this.prevSpeed = 0; this.prevRate = 0;
-      this._fresh = false;
-    } else {
-      const kv = 1 - Math.exp(-CONFIG.velSmooth * dt);
-      this.vx += ((cx - this.cx) / dt - this.vx) * kv;
-      this.vy += ((cy - this.cy) / dt - this.vy) * kv;
-      const rate = (sc - this.scalePrev) / (this.scalePrev * dt);
-      this.scaleRate += (rate - this.scaleRate) * kv;
-      this.cx = cx; this.cy = cy;
-      this.scalePrev = sc;
-      this.scale += (sc - this.scale) * kv;
-    }
+    this.cx = (p[0].x + p[5].x + p[9].x + p[13].x + p[17].x) / 5;
+    this.cy = (p[0].y + p[5].y + p[9].y + p[13].y + p[17].y) / 5;
+    this.scale += (this.detScale - this.scale) * k;
 
     this.speed = Math.hypot(this.vx, this.vy) / this.scale;
     const ko = 1 - Math.exp(-14 * dt);
@@ -143,15 +192,17 @@ export class HandState {
 
     // Pointing: index straight, the other three curled.
     const others = Math.max(E[1], E[2], E[3]);
-    this.point = this.point
+    const rawPoint = this.point
       ? E[0] > CONFIG.pointExit && others < CONFIG.curlMax + 0.1
       : E[0] > CONFIG.pointEnter && others < CONFIG.curlMax;
+    this.point = this.db.point.update(rawPoint, dt);
     this.pointTime = this.point ? this.pointTime + dt : 0;
     // Two-finger sign: index and middle straight, ring and pinky curled.
     const rp = Math.max(E[2], E[3]);
-    this.two = !this.point && (this.two
+    const rawTwo = !rawPoint && (this.two
       ? E[0] > CONFIG.pointExit && E[1] > CONFIG.pointExit && rp < CONFIG.curlMax + 0.1
       : E[0] > CONFIG.pointEnter && E[1] > CONFIG.pointEnter && rp < CONFIG.curlMax);
+    this.two = !this.point && this.db.two.update(rawTwo, dt);
     this.twoTime = this.two ? this.twoTime + dt : 0;
     {
       const a = p[5], b = p[8];
@@ -163,10 +214,13 @@ export class HandState {
       this.tipX = b.x; this.tipY = b.y;
     }
 
-    this.fist = !this.point && !this.two && (this.fist ? this.open < CONFIG.fistExit : this.open < CONFIG.fistEnter);
-    this.isOpen = this.isOpen ? this.open > CONFIG.openExit : this.open > CONFIG.openEnter;
-    this.cupped = !this.point && !this.two && !this.fist && !this.isOpen && this.open > CONFIG.cupMin && this.open < CONFIG.cupMax;
-    this.still = this.speed < CONFIG.stillSpeed;
+    const sign = this.point || this.two;
+    this.fist = !sign && this.db.fist.update(this.fist ? this.open < CONFIG.fistExit : this.open < CONFIG.fistEnter, dt);
+    this.isOpen = this.db.open.update(this.isOpen ? this.open > CONFIG.openExit : this.open > CONFIG.openEnter, dt);
+    this.cupped = !sign && !this.fist && !this.isOpen
+      && this.db.cup.update(this.open > CONFIG.cupMin && this.open < CONFIG.cupMax, dt);
+    // hysteresis on stillness too: settle below stillSpeed, break above 1.5x
+    this.still = this.still ? this.speed < CONFIG.stillSpeed * 1.5 : this.speed < CONFIG.stillSpeed;
     this.stillTime = this.still ? this.stillTime + dt : 0;
 
     this.flickCool -= dt;
@@ -231,33 +285,42 @@ export class Tracker {
     const gap = (nowMs - this.lastDetect) / 1000;
     const dt = this.lastDetect && gap > 0 ? Math.min(gap, 0.2) : 1 / 30;
     this.lastDetect = nowMs;
-    const dets = lms.map((lm, i) => ({ lm, wl: wls[i], label: hds[i]?.[0]?.categoryName || '' }));
+    const dets = lms.map((lm, i) => ({ lm, wl: wls[i], label: hds[i]?.[0]?.categoryName || '', c: HandState.palm(lm) }));
     const assigned = { L: null, R: null };
+    const H = this.hands;
+    const d2 = (a, h) => (a.c.x - h.cx) ** 2 + (a.c.y - h.cy) ** 2;
 
     if (dets.length >= 2) {
       const a = dets[0], b = dets[1];
-      if (a.label && b.label && a.label !== b.label) {
-        assigned[a.label === 'Left' ? 'L' : 'R'] = a;
-        assigned[b.label === 'Left' ? 'L' : 'R'] = b;
+      if (H.L.present && H.R.present) {
+        // Keep each hand in the slot it already owns (labels can flip).
+        const keep = d2(a, H.L) + d2(b, H.R), swap = d2(a, H.R) + d2(b, H.L);
+        assigned.L = keep <= swap ? a : b;
+        assigned.R = keep <= swap ? b : a;
       } else {
-        const ax = 1 - a.lm[0].x, bx = 1 - b.lm[0].x;
-        assigned.L = ax < bx ? a : b;
-        assigned.R = ax < bx ? b : a;
+        // Fresh pair: whoever is on the left of the screen is L.
+        assigned.L = a.c.x < b.c.x ? a : b;
+        assigned.R = a.c.x < b.c.x ? b : a;
       }
     } else if (dets.length === 1) {
       const d = dets[0];
-      const tmp = Projector.toScreen(d.lm[9].x, d.lm[9].y, { x: 0, y: 0 });
-      let slot = null;
+      let slot = null, best = Infinity;
       for (const s of ['L', 'R']) {
-        const h = this.hands[s];
-        if (h.present && Math.hypot(tmp.x - h.cx, tmp.y - h.cy) < h.scale * 3) slot = s;
+        const h = H[s];
+        if (!h.present) continue;
+        const dist = d2(d, h);
+        if (dist < (h.scale * 3.5) ** 2 && dist < best) { best = dist; slot = s; }
       }
-      if (!slot) slot = d.label === 'Right' ? 'R' : 'L';
+      if (!slot) {
+        if (H.L.present && !H.R.present) slot = 'R';
+        else if (H.R.present && !H.L.present) slot = 'L';
+        else slot = d.c.x < window.innerWidth / 2 ? 'L' : 'R';
+      }
       assigned[slot] = d;
     }
 
     for (const s of ['L', 'R']) {
-      if (assigned[s]) this.hands[s].ingest(assigned[s].lm, assigned[s].wl);
+      if (assigned[s]) this.hands[s].ingest(assigned[s].lm, assigned[s].wl, dt);
       else this.hands[s].miss(dt);
     }
   }

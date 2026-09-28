@@ -346,11 +346,12 @@ void main() {
     float across = abs(vUv2.y * 2.0 - 1.0);
     float core = exp(-across * across * 8.0);
     float flow = 0.45 + 0.55 * pow(0.5 + 0.5 * sin(vUv2.x * 10.0 - uTime * 16.0), 3.0);
-    col = mix(uColorA, uColorB, core) * core * flow * 1.3;
+    // bones only light up while a move is live; at rest the hand stays clean
+    col = mix(uColorA, uColorB, core) * core * flow * 1.3 * smoothstep(0.4, 1.1, level);
   } else {
     vec2 c = vUv2 * 2.0 - 1.0;
     float r2 = dot(c, c);
-    col = uColorB * (exp(-r2 * 6.0) * 1.3 + exp(-r2 * 30.0));
+    col = uColorB * (exp(-r2 * 6.0) * 1.3 + exp(-r2 * 30.0)) * (0.35 + 0.65 * smoothstep(0.3, 1.0, level));
   }
   gl_FragColor = vec4(col * level, 1.0);
 }

@@ -9,10 +9,15 @@ export const CONFIG = {
 
   maxHands: 2,
 
-  // Displayed landmarks chase the latest detection at this rate (1/s).
-  follow: 24,
-  // Velocity smoothing rate (1/s).
-  velSmooth: 14,
+  // Displayed landmarks chase the (filtered, velocity-led) detection at this rate (1/s).
+  follow: 30,
+  // Velocity smoothing rate (1/s), applied per detection.
+  velSmooth: 18,
+  // One Euro landmark filter: cutoff at rest (Hz) and speed coefficient.
+  euroMinCutoff: 1.6,
+  euroBeta: 0.012,
+  // Seconds a hand may drop out of detection before its moves are cancelled.
+  lostGrace: 0.35,
 
   // Openness: 0 = tight fist, 1 = fingers fully spread.
   fistEnter: 0.24, fistExit: 0.34,

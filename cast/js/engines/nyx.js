@@ -162,6 +162,12 @@ export class Nyx {
     st.pushCool -= dt;
     this.updateSlash(st, h, dt, time);
     let want = 0;
+    if (h.present && Math.random() < dt * 14) {
+      // void wisps seeping off the fingertips
+      const p = h.pts[pick([4, 8, 12, 16, 20])];
+      this.ctx.particles.spawn({ x: p.x, y: p.y, vx: rand(-40, 40), vy: rand(-70, -20), drag: 1.2, life: rand(0.5, 0.9),
+        c: pick(VOID), bright: 0.7, size: rand(5, 9), size1: 14, fade: 1.2, flicker: 0.2 });
+    }
     if (h.present) {
       st.x = damp(st.x || h.cx, h.cx, 20, dt);
       st.y = damp(st.y || h.cy, h.cy, 20, dt);
@@ -206,6 +212,7 @@ export class Nyx {
       }
       sfx.loop('vortex', P);
       Post.wantDim(P * 0.35);
+      Post.wantZoom(P * 0.06, st.x, st.y);
       return 0.35 + P * 1.1;
     }
     return 0.3;
@@ -378,6 +385,7 @@ export class Nyx {
     sfx.loop('drone', 0.35 + lv * 0.65);
     if (pr > 0.05) sfx.loop('hum', pr);
     Post.wantDim(0.5 + lv * 0.3 + pr * 0.15);
+    Post.wantZoom(0.05 + lv * 0.08 + pr * 0.04, s.x, s.y);
     Post.shake(dt * (0.5 + lv * 0.9 + pr * 0.6));
     overlay.letterbox(Math.max(lv, pr));
     levels[0] = Math.max(levels[0], 0.8 + lv);
@@ -402,6 +410,8 @@ export class Nyx {
     for (let i = 0; i < 160; i++) this.streak(s.x, s.y, rand(0, TAU), rand(700, 2200), { life: rand(0.4, 0.8), width: rand(2, 4) });
     this.impulse(s.x, s.y, diag, 1800);
     overlay.callout('虚空門', 'Portal', { big: true, dur: 1.6 });
+    overlay.crack(s.x, s.y, 1.3);
+    Post.freeze(0.1);
     sfx.play('portal');
     this.ctx.onMove(3);
   }

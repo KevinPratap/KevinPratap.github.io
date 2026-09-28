@@ -12,6 +12,7 @@ export class Overlay {
     this.callouts = [];
     this.reticles = [];
     this.comboN = 0; this.comboT = 9;
+    this.cracks = [];
     this.speed = 0; this.speedTarget = 0;
     this.focus = { x: 0, y: 0 };
     this.bars = 0; this.barsTarget = 0;
@@ -46,12 +47,62 @@ export class Overlay {
 
   combo(n) { this.comboN = n; this.comboT = 0; }
 
+  // Glass fracture radiating from an impact point: jagged spokes with
+  // forks, joined by concentric web strands. Holds, then fades.
+  crack(x, y, power = 1) {
+    const W = this.w, H = this.h, diag = Math.hypot(W, H);
+    const segs = [];
+    const spokes = 9 + Math.floor(power * 5);
+    const ends = [];
+    for (let i = 0; i < spokes; i++) {
+      let a = (i / spokes) * TAU + rand(-0.15, 0.15);
+      let px = x, py = y;
+      const len = diag * rand(0.18, 0.42) * Math.min(1.4, power);
+      const path = [[px, py]];
+      let d = 0;
+      while (d < len) {
+        const step = rand(14, 38);
+        a += rand(-0.28, 0.28);
+        px += Math.cos(a) * step; py += Math.sin(a) * step;
+        d += step;
+        path.push([px, py]);
+        if (Math.random() < 0.12) {
+          // fork
+          let fa = a + (Math.random() < 0.5 ? -1 : 1) * rand(0.4, 0.9), fx = px, fy = py;
+          const fork = [[fx, fy]];
+          for (let k = 0, fl = rand(3, 7); k < fl; k++) {
+            fa += rand(-0.3, 0.3);
+            fx += Math.cos(fa) * rand(10, 26); fy += Math.sin(fa) * rand(10, 26);
+            fork.push([fx, fy]);
+          }
+          segs.push({ path: fork, w: 1.1 });
+        }
+      }
+      segs.push({ path, w: 2.2 });
+      ends.push(path);
+    }
+    // web strands between neighbouring spokes
+    for (const ring of [0.25, 0.5, 0.75]) {
+      for (let i = 0; i < ends.length; i++) {
+        if (Math.random() < 0.3) continue;
+        const A = ends[i], B = ends[(i + 1) % ends.length];
+        const pa = A[Math.floor(A.length * ring)], pb = B[Math.floor(B.length * ring)];
+        if (!pa || !pb) continue;
+        const mx = (pa[0] + pb[0]) / 2 + rand(-8, 8), my = (pa[1] + pb[1]) / 2 + rand(-8, 8);
+        segs.push({ path: [pa, [mx, my], pb], w: 1 });
+      }
+    }
+    this.cracks.push({ segs, t: 0, x, y, dur: 1.6 + power * 0.4 });
+    if (this.cracks.length > 3) this.cracks.shift();
+  }
+
   reticle(x, y, size) { this.reticles.push({ x, y, size, t: 0 }); }
 
   clear() {
     this.callouts.length = 0;
     this.reticles.length = 0;
     this.comboT = 9;
+    this.cracks.length = 0;
     this.speed = this.speedTarget = 0;
     this.bars = this.barsTarget = 0;
   }
@@ -60,6 +111,13 @@ export class Overlay {
     const g = this.g, W = this.w, H = this.h;
     g.setTransform(this.pr, 0, 0, this.pr, 0, 0);
     g.clearRect(0, 0, W, H);
+
+    for (let i = this.cracks.length - 1; i >= 0; i--) {
+      const c = this.cracks[i];
+      c.t += dt;
+      if (c.t > c.dur) { this.cracks.splice(i, 1); continue; }
+      this.drawCrack(c);
+    }
 
     this.speed += (this.speedTarget - this.speed) * (1 - Math.exp(-dt * 12));
     this.speedTarget = 0;
@@ -132,6 +190,38 @@ export class Overlay {
     g.strokeText('COMBO', 0, sm * 2.4);
     g.fillStyle = '#fff';
     g.fillText('COMBO', 0, sm * 2.4);
+    g.restore();
+  }
+
+  drawCrack(c) {
+    const g = this.g;
+    // snaps outward in the first 60ms, holds, fades over the last 40%
+    const grow = Math.min(1, c.t / 0.06);
+    const a = c.t < c.dur * 0.6 ? 1 : 1 - (c.t - c.dur * 0.6) / (c.dur * 0.4);
+    g.save();
+    g.lineJoin = 'miter';
+    g.lineCap = 'round';
+    for (const pass of [0, 1]) {
+      g.strokeStyle = pass ? `rgba(255,255,255,${0.85 * a})` : `rgba(0,0,0,${0.55 * a})`;
+      for (const sgm of c.segs) {
+        const n = Math.max(2, Math.ceil(sgm.path.length * grow));
+        g.lineWidth = sgm.w * (pass ? 1 : 2.6);
+        g.beginPath();
+        for (let i = 0; i < n; i++) {
+          const [px, py] = sgm.path[i];
+          const ox = pass ? 0 : 1.2, oy = pass ? 0 : 1.2;
+          i ? g.lineTo(px + ox, py + oy) : g.moveTo(px + ox, py + oy);
+        }
+        g.stroke();
+      }
+    }
+    // bright chip at the point of impact
+    const r = 26 * a;
+    const rg = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, r * 2);
+    rg.addColorStop(0, `rgba(255,255,255,${0.7 * a})`);
+    rg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = rg;
+    g.fillRect(c.x - r * 2, c.y - r * 2, r * 4, r * 4);
     g.restore();
   }
 

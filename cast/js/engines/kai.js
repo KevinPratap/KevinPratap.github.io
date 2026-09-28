@@ -148,7 +148,11 @@ export class Kai {
     // Awakened aura wraps each hand in rising golden flame.
     const awk = this.awake ? Math.min(1, this.aw.awake / 1.5) : 0;
     const charging = this.aw.charging;
-    const a = Math.max(awk * 0.8, charging);
+    const idle = 0.28;
+    const a = Math.max(awk * 0.8, charging, idle);
+    const gold = awk > 0 || charging > 0.05;
+    st.aura.u.uColorA.value.set(...(gold ? CH.gold : CH.a));
+    st.aura.u.uColorB.value.set(...(gold ? CH.goldB : CH.b));
     if (a > 0.01) {
       const s = h.scale * (2.6 + charging * 1.0);
       st.aura.set(h.cx, h.cy - s * 0.18, s * 0.9, s * 1.25);
@@ -165,7 +169,7 @@ export class Kai {
         const ang = rand(0, TAU), L = h.scale * rand(0.8, 2);
         bolt(this.ctx.lines, p.x, p.y, p.x + Math.cos(ang) * L, p.y + Math.sin(ang) * L, { c: CH.goldB, width: 2, depth: 4, branch: 0.2, life: 0.06 });
       }
-      levels[idx] = Math.max(levels[idx], 0.6 + a);
+      if (gold) levels[idx] = Math.max(levels[idx], 0.6 + a);
     } else {
       st.aura.intensity = 0;
     }
@@ -337,6 +341,7 @@ export class Kai {
       }
       sfx.loop('charge', 0.35 + lv * 0.65);
       if (lv > 0.3) sfx.loop('drone', lv * 0.6);
+      Post.wantZoom(0.03 + lv * 0.13, w.x, w.y);
       Post.wantDim(0.25 + lv * 0.45);
       Post.shake(dt * (0.3 + lv * 1.4));
       overlay.letterbox(lv);
@@ -482,6 +487,7 @@ export class Kai {
     fx.ring({ x, y, r0: 20, r1: diag * 0.4 * power, dur: 0.7, width: 40, a: this.cA, b: this.cB, noise: 0.2, intensity: 2 });
     for (let i = 0; i < 120 * power; i++) this.spark(x, y, rand(0, TAU), rand(600, 2200) * Math.min(power, 1.6), { life: rand(0.4, 0.9), width: rand(2, 4) });
     this.lines = { t: 0.5, x, y };
+    if (power >= 2) this.ctx.overlay.crack(x, y, Math.min(1.6, power * 0.6));
     sfx.play('nova');
   }
 
@@ -556,6 +562,7 @@ export class Kai {
     }
     sfx.loop('hum', 0.4 + lv * 0.6);
     sfx.loop('drone', 0.3 + lv * 0.5);
+    Post.wantZoom(0.03 + lv * 0.08, s.x, s.y);
     Post.wantDim(0.35 + lv * 0.35);
     Post.wantEdge(0.12 + lv * 0.3, this.cA);
     Post.shake(dt * (0.3 + lv));
@@ -645,6 +652,7 @@ export class Kai {
       Post.wantDim(0.3 + c * 0.4);
       Post.wantEdge(0.15 + c * 0.45, CH.gold);
       Post.aberrate(c * 3);
+      Post.wantZoom(c * 0.12, (L.cx + R.cx) / 2, (L.cy + R.cy) / 2);
       overlay.letterbox(c);
       overlay.speedLines(c * 0.6, (L.cx + R.cx) / 2, (L.cy + R.cy) / 2);
       if (Math.random() < 0.3 + c) {
@@ -697,6 +705,7 @@ export class Kai {
     }
     this.lines = { t: 0.7, x, y };
     overlay.callout('覚醒', 'Awakening', { big: true, dur: 1.8 });
+    overlay.crack(x, y, 1.5);
     sfx.play('awaken');
     this.ctx.onMove(3);
   }

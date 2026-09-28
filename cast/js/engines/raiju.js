@@ -91,6 +91,10 @@ export class Raiju {
     }
     // stray static crawling over the hands
     for (const h of [hands.L, hands.R]) {
+      if (h.present && Math.random() < dt * 5) {
+        const p = h.pts[pick([4, 8, 12, 16, 20])];
+        this.spark(p.x, p.y, rand(0, TAU), rand(150, 450), { life: 0.15 });
+      }
       if (h.present && Math.random() < dt * 6) {
         const a = h.pts[(Math.random() * 21) | 0], b = h.pts[(Math.random() * 21) | 0];
         this.bolt(a.x, a.y, b.x, b.y, { width: 1.6, depth: 3, branch: 0, bright: 1.6, life: 0.06 });
@@ -180,6 +184,7 @@ export class Raiju {
       if (Math.random() < c * 0.8) this.spark(st.ox, st.oy, rand(0, TAU), rand(300, 900));
       sfx.loop('buzz', 0.3 + c * 0.7);
       Post.wantDim(c * 0.45);
+      Post.wantZoom(c * 0.08, st.ox, st.oy);
       if (c > 0.85) overlay.speedLines(((c - 0.85) / 0.15) * 0.5, st.ox, st.oy);
       level = Math.max(level, 0.4 + c * 1.3);
     }
@@ -213,6 +218,7 @@ export class Raiju {
       }
       sfx.loop('charge', 0.3 + r * 0.7);
       Post.wantDim(r * 0.4);
+      Post.wantZoom(r * 0.1, tx, ty);
       level = Math.max(level, 0.5 + r * 1.2);
     } else {
       st.tipBall.intensity = 0;
@@ -293,7 +299,7 @@ export class Raiju {
     Post.punch(1.2 * power, x, y);
     Post.bloom(1.4 * power);
     Post.freeze(0.05 * power);
-    if (power > 1.5) { Post.impact(0.1, [1, 1, 0.9]); this.lines = { t: 0.45, x, y }; }
+    if (power > 1.5) { Post.impact(0.1, [1, 1, 0.9]); this.lines = { t: 0.45, x, y }; this.ctx.overlay.crack(x, y, 1.1); }
     fx.glow({ x, y, s0: base * 0.1, s1: base * 0.8 * power, dur: 0.35, a: CH.a, b: HOT, intensity: 3 });
     fx.ring({ x, y, r0: 10, r1: base * 0.45 * power, dur: 0.4, width: 14, a: CH.a, b: HOT, noise: 0.2, intensity: 2 });
     const n = Math.floor(8 * power);
@@ -401,6 +407,7 @@ export class Raiju {
     }
     this.lines = { t: 0.5, x, y };
     overlay.callout('落雷', 'Thunderstrike', { big: true });
+    overlay.crack(x, y, 1.4);
     sfx.play('thunder', 1.6);
     this.ctx.onMove(3);
   }
@@ -498,6 +505,7 @@ export class Raiju {
     for (let i = 0; i < 200; i++) this.spark(x, y, rand(0, TAU), rand(600, 2400), { life: rand(0.25, 0.6) });
     this.lines = { t: 0.55, x, y };
     overlay.callout('過負荷', 'Overload', { big: true });
+    overlay.crack(x, y, 1.5);
     sfx.play('overload');
     this.ctx.onMove(2);
   }

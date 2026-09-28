@@ -22,6 +22,10 @@ uniform float uCA;
 uniform float uFlash;
 uniform vec3 uFlashCol;
 uniform float uImpact;
+uniform float uImpactPhase;
+uniform sampler2D tLight;
+uniform sampler2D tLight2;
+uniform float uLight;
 uniform vec3 uImpactCol;
 uniform float uDim;
 uniform vec3 uGrade;
@@ -150,6 +154,12 @@ void main() {
     texture2D(tFx, fxUv(p + o)).r,
     texture2D(tFx, fxUv(p)).g,
     texture2D(tFx, fxUv(p - o)).b);
+  // Powers light the room: the blurred bloom of the FX layer is used as a
+  // light map on the camera image, so faces and walls pick up the glow.
+  vec2 lu = fxUv(p);
+  vec3 light = texture2D(tLight, lu).rgb * 0.6 + texture2D(tLight2, lu).rgb * 0.9;
+  g *= 1.0 + light * uLight;
+  g += light * uLight * 0.06;
   vec3 col = g + fx * (1.0 - horizon) + uRimCol * (rim + portal) + uRimCol * tear;
 
   if (uFlare > 0.0) {
@@ -176,8 +186,23 @@ void main() {
   col *= 1.0 - dot(vc, vc) * uVignette;
   col = mix(col, uFlashCol, clamp(uFlash, 0.0, 1.0));
   if (uImpact > 0.0) {
-    float lum = dot(col, vec3(0.299, 0.587, 0.114));
-    vec3 imp = mix(uImpactCol, vec3(0.03, 0.02, 0.05), step(0.45, lum));
+    // Manga impact frame: the shot collapses to hard ink on paper, the
+    // energy burns through as its opposite, radial action lines slam in,
+    // and alternate frames invert.
+    float vl = dot(vid, vec3(0.299, 0.587, 0.114));
+    float fl = dot(fx, vec3(0.3, 0.5, 0.2));
+    float ink = smoothstep(0.3, 0.36, vl);
+    vec2 dz = px - uZoomC;
+    float ang = atan(dz.y, dz.x);
+    float rr = length(dz) / length(uRes);
+    float ray = step(0.72, hash12(vec2(floor(ang * 38.0), 7.0 + uImpactPhase)));
+    float lines = ray * smoothstep(0.12, 0.4, rr);
+    float v = ink;
+    v = mix(v, 1.0 - v, lines);
+    v = mix(v, 1.0, smoothstep(0.35, 0.6, fl));
+    if (uImpactPhase > 0.5) v = 1.0 - v;
+    vec3 paper = mix(vec3(1.0), uImpactCol, 0.35);
+    vec3 imp = mix(vec3(0.02, 0.015, 0.03), paper, v);
     col = mix(col, imp, uImpact);
   }
   col += (hash12(px + fract(uTime * 7.0) * 311.0) - 0.5) * uGrain;
@@ -191,7 +216,7 @@ export const Post = {
   trauma: 0,
   flash: 0, flashCol: [1, 1, 1],
   impactT: 0, impactCol: [1, 1, 1],
-  zoom: 1, zoomVel: 0, zoomC: { x: 0, y: 0 },
+  zoom: 1, zoomVel: 0, zoomC: { x: 0, y: 0 }, zoomWant: 0, zoomWantC: null, impactFrames: 0,
   ca: 0,
   dim: 0, dimTarget: 0,
   bloomBoost: 0,
@@ -219,7 +244,11 @@ export const Post = {
     if (amount >= this.flash) this.flashCol = col;
     this.flash = Math.max(this.flash, amount);
   },
-  impact(dur = 0.1, col = [1, 1, 1]) { this.impactT = Math.max(this.impactT, dur); this.impactCol = col; },
+  impact(dur = 0.1, col = [1, 1, 1]) { this.impactT = Math.max(this.impactT, dur * 1.3); this.impactCol = col; },
+  // Slow cinematic push-in while something charges; releases on its own.
+  wantZoom(amount, x, y) {
+    if (amount > this.zoomWant) { this.zoomWant = amount; this.zoomWantC = { x, y }; }
+  },
   punch(amount, x, y) {
     this.zoomVel += amount;
     if (x !== undefined) { this.zoomC.x = x; this.zoomC.y = y; }
@@ -275,6 +304,10 @@ export class Pipeline {
       uFlashCol: { value: new THREE.Color(1, 1, 1) },
       uImpact: { value: 0 },
       uImpactCol: { value: new THREE.Color(1, 1, 1) },
+      uImpactPhase: { value: 0 },
+      tLight: { value: null },
+      tLight2: { value: null },
+      uLight: { value: 2.2 },
       uDim: { value: 0 },
       uGrade: { value: new THREE.Vector3(1, 1, 1) },
       uGradeAmt: { value: 0.55 },
@@ -365,8 +398,18 @@ export class Pipeline {
     this.uniforms.uShake.value.set((Math.random() * 2 - 1) * sh, (Math.random() * 2 - 1) * sh);
     P.flash *= Math.exp(-dt * 8);
     P.impactT = Math.max(0, P.impactT - dt);
-    P.zoomVel += (-(P.zoom - 1) * 280 - P.zoomVel * 17) * dt;
+    const zt = 1 + Math.min(P.zoomWant, 0.18);
+    if (P.zoomWantC) {
+      const k = 1 - Math.exp(-dt * 3);
+      P.zoomC.x += (P.zoomWantC.x - (P.zoomC.x || P.zoomWantC.x)) * k;
+      P.zoomC.y += (P.zoomWantC.y - (P.zoomC.y || P.zoomWantC.y)) * k;
+    }
+    // soft spring toward the charge push-in, stiff spring for punches
+    const stiff = P.zoomWant > 0 && Math.abs(P.zoomVel) < 0.5 ? 18 : 280;
+    const damping = stiff < 100 ? 8 : 17;
+    P.zoomVel += (-(P.zoom - zt) * stiff - P.zoomVel * damping) * dt;
     P.zoom = clamp(P.zoom + P.zoomVel * dt, 0.8, 1.6);
+    P.zoomWant = 0; P.zoomWantC = null;
     P.ca *= Math.exp(-dt * 6);
     P.dim += (P.dimTarget - P.dim) * (1 - Math.exp(-dt * 5));
     P.dimTarget = 0;
@@ -386,6 +429,9 @@ export class Pipeline {
     u.uFlash.value = P.flash;
     u.uFlashCol.value.setRGB(...P.flashCol);
     u.uImpact.value = P.impactT > 0 ? 1 : 0;
+    // flip ink every other frame at ~30fps while the impact frame holds
+    P.impactFrames = P.impactT > 0 ? P.impactFrames + dt : 0;
+    u.uImpactPhase.value = Math.floor(P.impactFrames * 30) % 2;
     u.uImpactCol.value.setRGB(...P.impactCol);
     u.uZoom.value = P.zoom;
     u.uZoomC.value.set(P.zoomC.x || window.innerWidth / 2, P.zoomC.y || window.innerHeight / 2);
@@ -441,6 +487,8 @@ export class Pipeline {
     this.stepPost(dt);
     this.composer.render(dt);
     this.uniforms.tFx.value = this.composer.readBuffer.texture;
+    this.uniforms.tLight.value = this.bloomPass.renderTargetsVertical[2].texture;
+    this.uniforms.tLight2.value = this.bloomPass.renderTargetsVertical[4].texture;
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.compScene, this.compCamera);
   }
