@@ -2,8 +2,8 @@
 // plus a real screen-space black hole that bends the camera image.
 import { CONFIG, CHARACTERS } from '../config.js';
 import { Post } from '../render/pipeline.js';
-import { FXQuad, Sigil, makeSigilTextures } from '../render/objects.js';
-import { clamp, rand, pick, TAU, damp } from '../util.js';
+import { FXQuad, Sigil, Trail, makeSigilTextures } from '../render/objects.js';
+import { clamp, rand, pick, TAU, damp, lerp } from '../util.js';
 
 const CH = CHARACTERS.nyx;
 const VOID = [[0.55, 0.35, 1], [0.7, 0.5, 1], [0.9, 0.8, 1], [0.42, 0.26, 0.95]];
@@ -27,6 +27,8 @@ export class Nyx {
         sigil: new Sigil(S, tex, CH.a, CH.b),
         disk: new FXQuad(S, 'voidDisk', { a: CH.a, b: CH.b, intensity: 0, param: [0.28, 0.95, 3, 0] }),
         lens: null, swirl: null,
+        slash: false, sx: 0, sy: 0, ex: 0, ey: 0, slashT: 0, riftCool: 0,
+        blade: new Trail(S, { width: 30, life: 0.22, fire: false, a: CH.a, b: [1, 1, 1] }),
       };
     }
     this.sing = {
@@ -61,7 +63,8 @@ export class Nyx {
 
   exit() {
     for (const st of Object.values(this.slots)) {
-      st.pull = 0;
+      st.pull = 0; st.slash = false;
+      st.blade.pts.length = 0; st.blade.update(0);
       st.sigil.target = 0; st.sigil.level = 0; st.sigil.update(0, 0, 0, 0, 1);
       st.disk.intensity = 0;
       release(st.lens); release(st.swirl); st.lens = st.swirl = null;
@@ -157,6 +160,7 @@ export class Nyx {
     const { overlay, sfx, fx } = this.ctx;
     st.calloutCool -= dt;
     st.pushCool -= dt;
+    this.updateSlash(st, h, dt, time);
     let want = 0;
     if (h.present) {
       st.x = damp(st.x || h.cx, h.cx, 20, dt);
@@ -205,6 +209,66 @@ export class Nyx {
       return 0.35 + P * 1.1;
     }
     return 0.3;
+  }
+
+  // ---------- Rift Cut ----------
+  updateSlash(st, h, dt, time) {
+    st.riftCool -= dt;
+    const fast = h.present && h.point && h.speed > CONFIG.slashSpeed * (st.slash ? 0.45 : 1);
+    if (fast) {
+      if (!st.slash) {
+        st.slash = true; st.slashT = 0;
+        st.sx = h.tipX; st.sy = h.tipY;
+        this.ctx.sfx.play('whip');
+      }
+      st.slashT += dt;
+      st.ex = h.tipX; st.ey = h.tipY;
+      st.blade.width = h.scale * 0.5;
+      st.blade.push(h.tipX, h.tipY, time);
+      for (let i = 0; i < 2; i++) this.streak(h.tipX, h.tipY, Math.atan2(-h.vy, -h.vx) + rand(-0.4, 0.4), rand(100, 400), { life: 0.25 });
+    } else if (st.slash) {
+      st.slash = false;
+      const len = Math.hypot(st.ex - st.sx, st.ey - st.sy);
+      if (len > h.scale * 2.2 && st.riftCool <= 0 && st.slashT < 0.8) this.rift(st.sx, st.sy, st.ex, st.ey, h.scale);
+    }
+    st.blade.update(time);
+  }
+
+  rift(x0, y0, x1, y1, sc) {
+    const { fx, sfx, overlay } = this.ctx;
+    const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    // overshoot both ends: the cut runs past the fingertip
+    const ax = x0 - ux * len * 0.25, ay = y0 - uy * len * 0.25;
+    const bx = x1 + ux * len * 0.35, by = y1 + uy * len * 0.35;
+    Post.tear({ x0: ax, y0: ay, x1: bx, y1: by, strength: 30, width: 12, life: 1.6 });
+    Post.freeze(0.08);
+    Post.shake(0.6);
+    Post.aberrate(12);
+    Post.flashScreen(0.2, [0.85, 0.75, 1]);
+    Post.bloom(1.4);
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    // the two sides of space get shoved apart
+    for (const p of this.motes) {
+      const rx = p.x - mx, ry = p.y - my;
+      const along = rx * ux + ry * uy;
+      if (Math.abs(along) > len * 0.9) continue;
+      const perp = -rx * uy + ry * ux;
+      const k = Math.exp(-Math.abs(perp) / 260);
+      const s = perp < 0 ? -1 : 1;
+      p.vx += -uy * s * 1600 * k; p.vy += ux * s * 1600 * k;
+    }
+    for (let i = 0; i < 90; i++) {
+      const t = rand(0, 1);
+      const px = lerp(ax, bx, t), py = lerp(ay, by, t);
+      const side = Math.random() < 0.5 ? -1 : 1;
+      this.streak(px, py, Math.atan2(ux * side, -uy * side) + rand(-0.3, 0.3), rand(300, 1100), { life: rand(0.3, 0.6) });
+    }
+    fx.glow({ x: mx, y: my, s0: sc, s1: len * 1.2, dur: 0.3, a: CH.a, b: [1, 1, 1], intensity: 2 });
+    overlay.callout('空間斬', 'Rift Cut', { big: true, dur: 1.3 });
+    sfx.play('tear');
+    this.ctx.onMove(4);
+    for (const st of Object.values(this.slots)) st.riftCool = 0.5;
   }
 
   push(h, toCamera) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { POINTS_VERT, POINTS_FRAG, STRIP_VERT, STREAK_FRAG } from './shaders.js';
+import { POINTS_VERT, POINTS_FRAG, STRIP_VERT, STREAK_FRAG, LINE_FRAG } from './shaders.js';
 
 export function additive(opts) {
   return new THREE.ShaderMaterial({
@@ -196,4 +196,76 @@ export class Streaks {
   clear() {
     while (this.list.length) this.free.push(this.list.pop());
   }
+}
+
+// Static glowing line segments with a white-hot core: lightning bolts, arcs.
+// Each segment lives a few frames; bolts are re-rolled to make them flicker.
+export class Lines {
+  constructor(scene, max) {
+    this.max = max;
+    const v = max * 4;
+    this.pos = new Float32Array(v * 3);
+    this.col = new Float32Array(v * 3);
+    const uv = new Float32Array(v * 2);
+    const idx = new Uint32Array(max * 6);
+    for (let i = 0; i < max; i++) {
+      uv.set([0, 0, 0, 1, 1, 0, 1, 1], i * 8);
+      const b = i * 4;
+      idx.set([b, b + 1, b + 2, b + 2, b + 1, b + 3], i * 6);
+    }
+    this.geo = new THREE.BufferGeometry();
+    this.geo.setAttribute('position', dyn(this.pos, 3));
+    this.geo.setAttribute('aColor', dyn(this.col, 3));
+    this.geo.setAttribute('aUv', new THREE.BufferAttribute(uv, 2));
+    this.geo.setAttribute('aKind', new THREE.BufferAttribute(new Float32Array(v), 1));
+    this.geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    this.geo.setDrawRange(0, 0);
+    this.mat = additive({ vertexShader: STRIP_VERT, fragmentShader: LINE_FRAG });
+    this.obj = new THREE.Mesh(this.geo, this.mat);
+    this.obj.frustumCulled = false;
+    scene.add(this.obj);
+    this.list = [];
+    this.free = [];
+  }
+
+  spawn(x0, y0, x1, y1, width, c, bright, life) {
+    if (this.list.length >= this.max) this.free.push(this.list.shift());
+    const s = this.free.pop() || {};
+    s.x0 = x0; s.y0 = y0; s.x1 = x1; s.y1 = y1; s.w = width;
+    s.r = c[0] * bright; s.g = c[1] * bright; s.b = c[2] * bright;
+    s.life = s.maxLife = life;
+    this.list.push(s);
+    return s;
+  }
+
+  update(dt) {
+    const L = this.list;
+    for (let i = L.length - 1; i >= 0; i--) {
+      L[i].life -= dt;
+      if (L[i].life <= 0) { this.free.push(L[i]); L[i] = L[L.length - 1]; L.pop(); }
+    }
+    const n = L.length, P = this.pos, C = this.col;
+    for (let i = 0; i < n; i++) {
+      const s = L[i];
+      let dx = s.x1 - s.x0, dy = s.y1 - s.y0;
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len; dy /= len;
+      // extend a little past both ends so joints overlap cleanly
+      const ex = dx * s.w * 0.35, ey = dy * s.w * 0.35;
+      const nx = -dy * s.w * 0.5, ny = dx * s.w * 0.5;
+      const ax = s.x0 - ex, ay = s.y0 - ey, bx = s.x1 + ex, by = s.y1 + ey;
+      const j = i * 12;
+      P[j] = ax + nx; P[j + 1] = ay + ny; P[j + 2] = 0;
+      P[j + 3] = ax - nx; P[j + 4] = ay - ny; P[j + 5] = 0;
+      P[j + 6] = bx + nx; P[j + 7] = by + ny; P[j + 8] = 0;
+      P[j + 9] = bx - nx; P[j + 10] = by - ny; P[j + 11] = 0;
+      const f = Math.pow(Math.max(0, s.life / s.maxLife), 0.6);
+      for (let k = 0; k < 4; k++) { C[j + k * 3] = s.r * f; C[j + k * 3 + 1] = s.g * f; C[j + k * 3 + 2] = s.b * f; }
+    }
+    this.geo.setDrawRange(0, n * 6);
+    this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.aColor.needsUpdate = true;
+  }
+
+  clear() { while (this.list.length) this.free.push(this.list.pop()); }
 }

@@ -375,3 +375,52 @@ export class EnergyHands {
   }
   dispose() { this.mesh.parent?.remove(this.mesh); this.geo.dispose(); this.mat.dispose(); }
 }
+
+// ---------- Lightning ----------
+
+// Jagged bolt from (x0,y0) to (x1,y1) by midpoint displacement, with forked
+// branches. Segments go into a Lines renderer and live `life` seconds, so
+// callers re-roll bolts every few frames to get the flicker.
+export function bolt(lines, x0, y0, x1, y1, o = {}) {
+  const width = o.width ?? 6;
+  const c = o.c || [0.8, 0.9, 1];
+  const bright = o.bright ?? 2.2;
+  const life = o.life ?? 0.09;
+  const jag = o.jag ?? 0.22;
+  const depth = o.depth ?? 5;
+  const branch = o.branch ?? 0.35;
+  let pts = [[x0, y0], [x1, y1]];
+  let off = Math.hypot(x1 - x0, y1 - y0) * jag;
+  for (let d = 0; d < depth; d++) {
+    const next = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const len = Math.hypot(dx, dy) || 1;
+      const k = (Math.random() * 2 - 1) * off;
+      next.push([(a[0] + b[0]) / 2 - (dy / len) * k, (a[1] + b[1]) / 2 + (dx / len) * k], b);
+    }
+    pts = next;
+    off *= 0.52;
+  }
+  const n = pts.length - 1;
+  for (let i = 0; i < n; i++) {
+    const t = i / n;
+    const w = width * (o.taper ? 1 - t * 0.7 : 1);
+    lines.spawn(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], w, c, bright, life);
+  }
+  if (branch > 0 && width > 1.6) {
+    const count = Math.floor(branch * 4 + Math.random() * branch * 3);
+    for (let b = 0; b < count; b++) {
+      const i = 1 + ((Math.random() * (n - 2)) | 0);
+      const p = pts[i];
+      const dx = x1 - x0, dy = y1 - y0;
+      const L = Math.hypot(dx, dy) * (1 - i / n) * (0.25 + Math.random() * 0.35);
+      const ang = Math.atan2(dy, dx) + (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.7);
+      bolt(lines, p[0], p[1], p[0] + Math.cos(ang) * L, p[1] + Math.sin(ang) * L, {
+        width: width * 0.45, c, bright: bright * 0.75, life, jag: jag * 1.2, depth: Math.max(2, depth - 2), branch: branch * 0.4, taper: true,
+      });
+    }
+  }
+  return pts;
+}

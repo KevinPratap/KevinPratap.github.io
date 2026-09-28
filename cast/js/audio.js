@@ -172,6 +172,50 @@ export class SFX {
         this.tone({ f0: 90, f1: 30, dur: 0.9, gain: 0.8, when: 0.45 });
         this.hit({ type: 'lowpass', f0: 4000, f1: 120, dur: 0.9, gain: 0.6, when: 0.45, send: 0.5 });
         break;
+      case 'zap':
+        this.hit({ type: 'highpass', f0: 3000, f1: 7000, dur: 0.09 * s, gain: 0.35, attack: 0.002, send: 0.2 });
+        this.tone({ type: 'square', f0: 1800, f1: 300, dur: 0.07 * s, gain: 0.08 });
+        this.tone({ type: 'sawtooth', f0: 120, f1: 60, dur: 0.1 * s, gain: 0.12, send: 0.1 });
+        break;
+      case 'thunder':
+        this.hit({ type: 'highpass', f0: 2400, f1: 5000, dur: 0.12, gain: 0.9, attack: 0.001, send: 0.5 });
+        this.tone({ type: 'square', f0: 900, f1: 80, dur: 0.12, gain: 0.25 });
+        this.hit({ type: 'lowpass', f0: 1800, f1: 60, dur: 1.6 * s, gain: 0.9, attack: 0.03, send: 0.7, when: 0.04 });
+        this.tone({ f0: 70, f1: 25, dur: 1.4 * s, gain: 0.9, when: 0.04 });
+        break;
+      case 'rail':
+        this.tone({ type: 'sawtooth', f0: 2600, f1: 90, dur: 0.35, gain: 0.3, attack: 0.002, send: 0.3 });
+        this.hit({ type: 'bandpass', f0: 5000, f1: 600, q: 1.5, dur: 0.3, gain: 0.8, attack: 0.001, send: 0.4 });
+        this.tone({ f0: 160, f1: 30, dur: 0.6, gain: 1.0 });
+        break;
+      case 'tear':
+        this.hit({ type: 'bandpass', f0: 6000, f1: 400, q: 3, dur: 0.45, gain: 0.7, attack: 0.002, send: 0.6 });
+        this.tone({ type: 'sawtooth', f0: 1400, f1: 40, dur: 0.5, gain: 0.25, send: 0.5 });
+        this.tone({ f0: 90, f1: 30, dur: 0.8, gain: 0.8, when: 0.03 });
+        break;
+      case 'kiblast':
+        this.tone({ type: 'triangle', f0: 900, f1: 250, dur: 0.14, gain: 0.25, send: 0.15 });
+        this.hit({ type: 'bandpass', f0: 1200, f1: 3500, q: 1.4, dur: 0.14, gain: 0.35, send: 0.15 });
+        break;
+      case 'kiwave':
+        this.hit({ type: 'lowpass', f0: 8000, f1: 300, dur: 1.2, gain: 1.0, attack: 0.01, send: 0.5 });
+        this.tone({ f0: 180, f1: 40, dur: 1.0, gain: 1.0 });
+        this.tone({ type: 'sawtooth', f0: 220, f1: 330, dur: 1.2, gain: 0.18, send: 0.5 });
+        break;
+      case 'awaken':
+        this.hit({ type: 'lowpass', f0: 7000, f1: 90, dur: 2.0, gain: 1.0, send: 0.6 });
+        this.tone({ f0: 120, f1: 22, dur: 1.6, gain: 1.0 });
+        [220, 277, 330, 440].forEach((f, i) => this.tone({ type: 'sawtooth', f0: f, f1: f * 1.5, dur: 1.4, gain: 0.07, attack: 0.08, send: 0.8, when: 0.02 * i }));
+        break;
+      case 'step':
+        this.hit({ type: 'bandpass', f0: 400, f1: 6000, q: 1.2, dur: 0.16, gain: 0.55, attack: 0.002, send: 0.3 });
+        this.tone({ type: 'sine', f0: 1500, f1: 3000, dur: 0.1, gain: 0.14, when: 0.12 });
+        this.tone({ type: 'sine', f0: 2000, f1: 900, dur: 0.12, gain: 0.1, when: 0.14 });
+        break;
+      case 'overload':
+        this.play('thunder', 1.3);
+        this.hit({ type: 'lowpass', f0: 6000, f1: 70, dur: 1.5, gain: 1.0, send: 0.6, when: 0.02 });
+        break;
       case 'shutter':
         this.tone({ type: 'square', f0: 1600, f1: 1500, dur: 0.04, gain: 0.08, send: 0 });
         break;
@@ -253,7 +297,32 @@ export class SFX {
     noiseSrc().connect(vf); vf.connect(vortex.g);
     vortex.apply = () => {};
 
-    this.loops = { charge, roar, drone, hum, vortex };
+    // Electric buzz: detuned saws chopped by a fast square LFO.
+    const buzz = bus(0.22);
+    const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 1400; bf.Q.value = 1.2;
+    const chop = ctx.createGain(); chop.gain.value = 0.6;
+    const cl2 = ctx.createOscillator(); cl2.type = 'square'; cl2.frequency.value = 37;
+    const cla = ctx.createGain(); cla.gain.value = 0.4;
+    cl2.connect(cla); cla.connect(chop.gain); cl2.start();
+    [120, 121.5, 180].forEach((f) => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(bf); o.start();
+    });
+    const hs = ctx.createBiquadFilter(); hs.type = 'highpass'; hs.frequency.value = 3000;
+    noiseSrc().connect(hs); hs.connect(chop);
+    bf.connect(chop); chop.connect(buzz.g);
+    buzz.apply = (L, t) => bf.frequency.setTargetAtTime(900 + L * 1800, t, 0.05);
+
+    // Sustained energy beam roar.
+    const beam = bus(0.55);
+    const bmf = ctx.createBiquadFilter(); bmf.type = 'lowpass'; bmf.frequency.value = 900;
+    noiseSrc().connect(bmf);
+    const bo = ctx.createOscillator(); bo.type = 'sawtooth'; bo.frequency.value = 70;
+    const bog = ctx.createGain(); bog.gain.value = 0.25;
+    bo.connect(bog); bog.connect(bmf); bo.start();
+    bmf.connect(beam.g);
+    beam.apply = (L, t) => bmf.frequency.setTargetAtTime(600 + L * 2400, t, 0.08);
+
+    this.loops = { charge, roar, drone, hum, vortex, buzz, beam };
   }
 
   // Engines raise loop levels every frame; unset loops fade out.

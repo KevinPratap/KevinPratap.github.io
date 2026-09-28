@@ -2,19 +2,21 @@ import * as THREE from 'three';
 import { CONFIG, CHARACTERS, KANJI_SET } from './config.js';
 import { Tracker, HAND_BONES, Projector } from './tracking.js';
 import { Pipeline, Post } from './render/pipeline.js';
-import { Particles, Streaks } from './render/particles.js';
-import { FXList, EnergyHands } from './render/objects.js';
+import { Particles, Streaks, Lines } from './render/particles.js';
+import { FXList, EnergyHands, bolt } from './render/objects.js';
 import { Overlay } from './overlay.js';
 import { SFX } from './audio.js';
 import { Recorder } from './recorder.js';
 import { SimHands } from './sim.js';
 import { Ember } from './engines/ember.js';
 import { Nyx } from './engines/nyx.js';
+import { Raiju } from './engines/raiju.js';
+import { Kai } from './engines/kai.js';
 import { selectBackground } from './select-bg.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const ORDER = ['ember', 'nyx'];
+const ORDER = ['ember', 'nyx', 'raiju', 'kai'];
 
 const screens = ['select', 'loading', 'error', 'live'];
 function show(name) {
@@ -29,9 +31,10 @@ const bg = selectBackground($('select-bg'));
 
 const state = {
   char: null, engine: null, booted: false, looping: false, sim: null, useSim: false,
-  debug: false, lastSeen: 0, clock: 0, used: { ember: new Set(), nyx: new Set() }, pr: 1, fps: 60,
+  debug: false, lastSeen: 0, clock: 0, used: Object.fromEntries(ORDER.map((k) => [k, new Set()])), pr: 1, fps: 60,
+  combo: 0, lastMove: -99,
 };
-let pipeline, particles, streaks, fx, energy, overlay, recorder, engines, wakeLock;
+let pipeline, particles, streaks, lines, fx, energy, overlay, recorder, engines, wakeLock;
 
 // ---------- select screen ----------
 document.querySelectorAll('.char-card').forEach((card) => {
@@ -168,7 +171,8 @@ function initGraphics() {
   pipeline = new Pipeline($('gl'));
   const scene = pipeline.fxScene;
   particles = new Particles(scene, 2600, pipeline.pr);
-  streaks = new Streaks(scene, 1400);
+  streaks = new Streaks(scene, 1600);
+  lines = new Lines(scene, 2400);
   fx = new FXList(scene);
   energy = new EnergyHands(scene, HAND_BONES);
   overlay = new Overlay($('overlay'));
@@ -178,8 +182,8 @@ function initGraphics() {
     onDone: showClip,
     onError: (m) => { toast(m); setRecUI(false); },
   });
-  const ctx = { scene, fx, particles, streaks, overlay, sfx, onMove: markMove };
-  engines = { ember: new Ember(ctx), nyx: new Nyx(ctx) };
+  const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, onMove: markMove };
+  engines = { ember: new Ember(ctx), nyx: new Nyx(ctx), raiju: new Raiju(ctx), kai: new Kai(ctx) };
   state.pr = pipeline.pr;
   state.booted = true;
   window.addEventListener('resize', onResize);
@@ -198,7 +202,10 @@ function enterCharacter(name, intro) {
   fx.clear();
   particles.clear();
   streaks.clear();
+  lines.clear();
   Post.clearSources();
+  Post.freezeT = 0; Post.glitch = 0; Post.ghost = 0; Post.edge = 0;
+  state.combo = 0;
   overlay.clear();
   state.char = name;
   const ch = CHARACTERS[name];
@@ -228,6 +235,7 @@ function playIntro(ch) {
     Post.shake(0.35);
     Post.shockwave({ x: W / 2, y: H / 2, speed: 1400, width: 90, strength: 34, life: 0.8 });
     fx.ring({ x: W / 2, y: H / 2, r0: 20, r1: Math.hypot(W, H) * 0.6, dur: 0.8, width: 30, a: ch.a, b: ch.b, fire: ch === CHARACTERS.ember, intensity: 1.8 });
+    if (ch === CHARACTERS.raiju) for (let i = 0; i < 8; i++) { const a = Math.random() * 6.283; bolt(lines, W / 2, H / 2, W / 2 + Math.cos(a) * W * 0.5, H / 2 + Math.sin(a) * H * 0.5, { c: ch.b, width: 4, life: 0.15 }); }
   }, 450);
 }
 
@@ -248,6 +256,13 @@ function buildMoves(ch, name) {
 }
 
 function markMove(i) {
+  // Chain moves inside the window to build a combo.
+  state.combo = state.clock - state.lastMove < CONFIG.comboWindow ? state.combo + 1 : 1;
+  state.lastMove = state.clock;
+  if (state.combo >= 2) {
+    overlay.combo(state.combo);
+    if (state.combo % 5 === 0) { sfx.play('ready'); Post.bloom(1); }
+  }
   const set = state.used[state.char];
   const li = $('moves-list').children[i];
   if (!li) return;
@@ -261,7 +276,8 @@ function markMove(i) {
 
 function updateProgress() {
   const n = state.used[state.char] ? state.used[state.char].size : 0;
-  $('moves-progress').textContent = `${n}/4 found`;
+  const total = state.char ? CHARACTERS[state.char].moves.length : 4;
+  $('moves-progress').textContent = `${n}/${total} found`;
 }
 
 // ---------- main loop ----------
@@ -292,11 +308,14 @@ function frame(now) {
   }
   if (H.L.present || H.R.present) state.lastSeen = time;
 
-  const levels = state.engine.update(dt, time, H);
+  // Hit-stop: the world slows for a beat while the camera stays live.
+  const gdt = dt * Post.timeScale;
+  const levels = state.engine.update(gdt, time, H);
   energy.update([H.L, H.R], levels, time);
-  particles.update(dt);
-  streaks.update(dt);
-  fx.update(dt, time);
+  particles.update(gdt);
+  streaks.update(gdt);
+  lines.update(dt);
+  fx.update(gdt, time);
   sfx.endFrame();
   pipeline.render(dt, time);
   overlay.draw(dt);
@@ -433,4 +452,4 @@ if (params.has('demo') || params.has('sim')) {
   selectChar(CHARACTERS[params.get('char')] ? params.get('char') : 'ember');
   if (params.has('auto')) boot(true);
 }
-window.__cast = { state, Post, get pipeline() { return pipeline; }, tracker, sfx };
+window.__cast = { state, Post, get pipeline() { return pipeline; }, tracker, sfx, get engines() { return engines; } };

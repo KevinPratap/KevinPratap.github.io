@@ -11,6 +11,7 @@ export class Overlay {
     this.g = canvas.getContext('2d');
     this.callouts = [];
     this.reticles = [];
+    this.comboN = 0; this.comboT = 9;
     this.speed = 0; this.speedTarget = 0;
     this.focus = { x: 0, y: 0 };
     this.bars = 0; this.barsTarget = 0;
@@ -43,11 +44,14 @@ export class Overlay {
 
   letterbox(amount) { this.barsTarget = Math.max(this.barsTarget, amount); }
 
+  combo(n) { this.comboN = n; this.comboT = 0; }
+
   reticle(x, y, size) { this.reticles.push({ x, y, size, t: 0 }); }
 
   clear() {
     this.callouts.length = 0;
     this.reticles.length = 0;
+    this.comboT = 9;
     this.speed = this.speedTarget = 0;
     this.bars = this.barsTarget = 0;
   }
@@ -83,6 +87,52 @@ export class Overlay {
       if (c.t > c.dur) this.callouts.splice(i, 1);
     }
     this.callouts.forEach((c) => this.drawCallout(c));
+    this.comboT += dt;
+    if (this.comboN >= 2 && this.comboT < 2.4) this.drawCombo();
+  }
+
+  drawCombo() {
+    const g = this.g, W = this.w, H = this.h, t = this.comboT;
+    const base = Math.min(W, H);
+    const ch = this.ch;
+    const cA = ch ? ch.a : [1, 1, 1], cB = ch ? ch.b : [1, 1, 1];
+    const pop = t < 0.12 ? 1 + (1 - t / 0.12) * 0.9 : 1;
+    const a = t > 1.9 ? 1 - (t - 1.9) / 0.5 : 1;
+    const jx = t < 0.2 ? rand(-5, 5) : 0;
+    g.save();
+    g.translate(W - base * 0.06 + jx, H * 0.52);
+    g.rotate(-0.08);
+    g.scale(pop, pop);
+    g.globalAlpha = Math.max(0, a);
+    g.textAlign = 'right';
+    g.textBaseline = 'alphabetic';
+    const big = base * (0.13 + Math.min(this.comboN, 8) * 0.008);
+    g.font = `italic 900 ${big}px "Sora", system-ui, sans-serif`;
+    g.lineJoin = 'round';
+    g.lineWidth = big * 0.1;
+    g.strokeStyle = 'rgba(6,4,10,0.9)';
+    const txt = `${this.comboN}`;
+    g.strokeText(txt, 0, 0);
+    const gr = g.createLinearGradient(0, -big, 0, 0);
+    gr.addColorStop(0, '#ffffff');
+    gr.addColorStop(0.5, rgbToCss(cB, 1));
+    gr.addColorStop(1, rgbToCss(cA, 1));
+    g.fillStyle = gr;
+    g.shadowColor = rgbToCss(cA, 1);
+    g.shadowBlur = base * 0.03;
+    g.fillText(txt, 0, 0);
+    g.shadowBlur = 0;
+    const sm = base * 0.034;
+    g.font = `900 ${sm}px ${KANJI_FONT}`;
+    g.lineWidth = sm * 0.2;
+    g.strokeText('連撃', 0, sm * 1.3);
+    g.fillStyle = rgbToCss(cB, 1);
+    g.fillText('連撃', 0, sm * 1.3);
+    g.font = `700 ${sm * 0.8}px "Cinzel", Georgia, serif`;
+    g.strokeText('COMBO', 0, sm * 2.4);
+    g.fillStyle = '#fff';
+    g.fillText('COMBO', 0, sm * 2.4);
+    g.restore();
   }
 
   drawSpeedLines() {

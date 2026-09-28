@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Cast</title>
-<meta name="description" content="Cast fire and void powers with your bare hands. Webcam hand tracking, real particle physics, a black hole that bends your camera. No install.">
+<meta name="description" content="Cast anime powers with your bare hands: fire, void, lightning and ki. Webcam hand tracking, real particle physics, beams, black holes and lightning that bend your camera. No install.">
 <meta name="theme-color" content="#07060b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='26' fill='none' stroke='%23ff5a2b' stroke-width='6'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffc24d'/%3E%3C/svg%3E">
 <meta property="og:title" content="Cast">
@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=JetBrains+Mono:wght@400;600&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@900&text=%E7%82%8E%E8%99%9A%E7%81%AB%E7%90%83%E9%9E%AD%E7%88%86%E5%A3%81%E5%BC%95%E5%8A%9B%E6%96%A5%E7%89%B9%E7%95%B0%E7%82%B9%E7%A9%BA%E9%96%80&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@900&text=%E7%82%8E%E8%99%9A%E9%9B%B7%E7%81%AB%E7%90%83%E9%9E%AD%E7%88%86%E5%A3%81%E9%BE%8D%E5%BC%95%E5%8A%9B%E6%96%A5%E7%89%B9%E7%95%B0%E7%82%B9%E7%A9%BA%E9%96%80%E9%96%93%E6%96%AC%E6%8E%8C%E9%9B%BB%E7%A3%81%E7%A0%B2%E9%8E%96%E8%90%BD%E9%80%A3%E6%92%83%E6%B0%97%E5%8A%9F%E6%B3%A2%E5%A4%A9%E5%85%83%E7%8E%89%E5%BC%BE%E5%B0%84%E8%A6%9A%E9%86%92%E7%9E%AC%E6%AD%A9%E9%81%8E%E8%B2%A0%E8%8D%B7&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 <script type="importmap">
 {
@@ -44,6 +44,7 @@
           <li><span class="mk" lang="ja">炎鞭</span><span><b>Flame Whip.</b> Swing a fist fast.</span></li>
           <li><span class="mk" lang="ja">爆炎</span><span><b>Nova Burst.</b> Hands together, then rip them apart.</span></li>
           <li><span class="mk" lang="ja">炎壁</span><span><b>Wall of Flame.</b> Both palms open wide and level.</span></li>
+          <li><span class="mk" lang="ja">火龍</span><span><b>Dragon Fire.</b> Point a finger and hold for a flame stream.</span></li>
         </ul>
       </button>
       <button type="button" class="char-card" data-char="nyx" aria-pressed="false">
@@ -55,6 +56,30 @@
           <li><span class="mk" lang="ja">斥力</span><span><b>Push.</b> Shove an open palm, or thrust it at the camera.</span></li>
           <li><span class="mk" lang="ja">特異点</span><span><b>Singularity.</b> Press both hands together and hold.</span></li>
           <li><span class="mk" lang="ja">虚空門</span><span><b>Portal.</b> Keep holding for three seconds.</span></li>
+          <li><span class="mk" lang="ja">空間斬</span><span><b>Rift Cut.</b> Point and slash to split space open.</span></li>
+        </ul>
+      </button>
+      <button type="button" class="char-card" data-char="raiju" aria-pressed="false">
+        <span class="card-kanji" lang="ja" aria-hidden="true">雷</span>
+        <span class="char-name">Raiju</span>
+        <span class="char-sub">Lightning · arcs &amp; discharge</span>
+        <ul class="char-moves">
+          <li><span class="mk" lang="ja">雷掌</span><span><b>Thunder Palm.</b> Claw a hand to charge, flick to throw.</span></li>
+          <li><span class="mk" lang="ja">電磁砲</span><span><b>Railgun.</b> Point and hold still. It fires itself.</span></li>
+          <li><span class="mk" lang="ja">雷鎖</span><span><b>Arc Link.</b> Hands open and apart. Clap to overload.</span></li>
+          <li><span class="mk" lang="ja">落雷</span><span><b>Thunderstrike.</b> Slam a fist straight down.</span></li>
+        </ul>
+      </button>
+      <button type="button" class="char-card" data-char="kai" aria-pressed="false">
+        <span class="card-kanji" lang="ja" aria-hidden="true">気</span>
+        <span class="char-name">Kai</span>
+        <span class="char-sub">Ki · beams &amp; power-ups</span>
+        <ul class="char-moves">
+          <li><span class="mk" lang="ja">気功波</span><span><b>Ki Wave.</b> Cup both hands together, charge, thrust.</span></li>
+          <li><span class="mk" lang="ja">天元玉</span><span><b>Gathering Sphere.</b> Both open hands up high, then swing down.</span></li>
+          <li><span class="mk" lang="ja">気弾連射</span><span><b>Ki Barrage.</b> Flick open palms again and again.</span></li>
+          <li><span class="mk" lang="ja">覚醒</span><span><b>Awakening.</b> Clench both fists and hold to power up.</span></li>
+          <li><span class="mk" lang="ja">瞬歩</span><span><b>Instant Step.</b> Two fingers up, held still.</span></li>
         </ul>
       </button>
     </div>
@@ -103,7 +128,7 @@
   <div id="demo-badge" hidden>Demo · simulated hands</div>
 
   <aside id="moves-panel" aria-label="Moves">
-    <div class="moves-head"><p class="moves-title">Moves</p><span id="moves-progress">0/4 found</span></div>
+    <div class="moves-head"><p class="moves-title">Moves</p><span id="moves-progress">0/5 found</span></div>
     <ol id="moves-list"></ol>
   </aside>
 

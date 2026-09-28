@@ -35,28 +35,18 @@ export const Projector = {
   },
 };
 
-function opennessFromWorld(wl) {
-  const w = wl[0];
-  let sum = 0;
-  for (let i = 0; i < 4; i++) {
-    const t = wl[TIPS[i]], m = wl[MCPS[i]];
-    const dt = Math.hypot(t.x - w.x, t.y - w.y, t.z - w.z);
-    const dm = Math.hypot(m.x - w.x, m.y - w.y, m.z - w.z) || 1e-4;
-    sum += clamp((dt / dm - 1.0) / 0.85, 0, 1);
-  }
-  return sum / 4;
-}
-
-function opennessFrom2D(p) {
+// Per-finger extension (index..pinky), 0 = curled, 1 = straight. Uses 3D
+// world landmarks when available so it doesn't care about hand size.
+function extensions(p, out, is3d) {
   const w = p[0];
-  let sum = 0;
   for (let i = 0; i < 4; i++) {
     const t = p[TIPS[i]], m = p[MCPS[i]];
-    const dt = Math.hypot(t.x - w.x, t.y - w.y);
-    const dm = Math.hypot(m.x - w.x, m.y - w.y) || 1e-4;
-    sum += clamp((dt / dm - 1.0) / 0.85, 0, 1);
+    const dz = is3d ? (t.z - w.z) : 0, mz = is3d ? (m.z - w.z) : 0;
+    const dt = Math.hypot(t.x - w.x, t.y - w.y, dz);
+    const dm = Math.hypot(m.x - w.x, m.y - w.y, mz) || 1e-4;
+    out[i] = clamp((dt / dm - 1.0) / 0.85, 0, 1);
   }
-  return sum / 4;
+  return (out[0] + out[1] + out[2] + out[3]) / 4;
 }
 
 const pt = () => ({ x: 0, y: 0 });
@@ -72,6 +62,9 @@ export class HandState {
     this.speed = 0;
     this.scale = 80; this.scalePrev = 80; this.scaleRate = 0;
     this.open = 0.5; this.openTarget = 0.5;
+    this.ext = [0.5, 0.5, 0.5, 0.5]; this.extT = [0.5, 0.5, 0.5, 0.5];
+    this.point = false; this.pointTime = 0; this.two = false; this.twoTime = 0;
+    this.tipX = 0; this.tipY = 0; this.pdx = 0; this.pdy = -1;
     this.fist = false; this.isOpen = false; this.cupped = false; this.still = false;
     this.stillTime = 0; this.lostTime = 0;
     this.flick = false; this.thrust = false;
@@ -81,10 +74,11 @@ export class HandState {
 
   ingest(lm, wl) {
     for (let i = 0; i < 21; i++) Projector.toScreen(lm[i].x, lm[i].y, this.target[i]);
-    this.openTarget = wl ? opennessFromWorld(wl) : opennessFrom2D(this.target);
+    this.openTarget = wl ? extensions(wl, this.extT, true) : extensions(this.target, this.extT, false);
     if (!this.present) {
       for (let i = 0; i < 21; i++) { this.pts[i].x = this.target[i].x; this.pts[i].y = this.target[i].y; }
       this.open = this.openTarget;
+      for (let i = 0; i < 4; i++) this.ext[i] = this.extT[i];
       this._appeared = true;
       this._fresh = true;
     }
@@ -98,8 +92,8 @@ export class HandState {
     if (this.lostTime > 0.22) {
       this.present = false;
       this.speed = 0; this.vx = 0; this.vy = 0; this.scaleRate = 0;
-      this.fist = this.isOpen = this.cupped = this.still = false;
-      this.stillTime = 0;
+      this.fist = this.isOpen = this.cupped = this.still = this.point = this.two = false;
+      this.stillTime = 0; this.pointTime = 0; this.twoTime = 0;
     }
   }
 
@@ -142,11 +136,36 @@ export class HandState {
     }
 
     this.speed = Math.hypot(this.vx, this.vy) / this.scale;
-    this.open += (this.openTarget - this.open) * (1 - Math.exp(-14 * dt));
+    const ko = 1 - Math.exp(-14 * dt);
+    this.open += (this.openTarget - this.open) * ko;
+    const E = this.ext;
+    for (let i = 0; i < 4; i++) E[i] += (this.extT[i] - E[i]) * ko;
 
-    this.fist = this.fist ? this.open < CONFIG.fistExit : this.open < CONFIG.fistEnter;
+    // Pointing: index straight, the other three curled.
+    const others = Math.max(E[1], E[2], E[3]);
+    this.point = this.point
+      ? E[0] > CONFIG.pointExit && others < CONFIG.curlMax + 0.1
+      : E[0] > CONFIG.pointEnter && others < CONFIG.curlMax;
+    this.pointTime = this.point ? this.pointTime + dt : 0;
+    // Two-finger sign: index and middle straight, ring and pinky curled.
+    const rp = Math.max(E[2], E[3]);
+    this.two = !this.point && (this.two
+      ? E[0] > CONFIG.pointExit && E[1] > CONFIG.pointExit && rp < CONFIG.curlMax + 0.1
+      : E[0] > CONFIG.pointEnter && E[1] > CONFIG.pointEnter && rp < CONFIG.curlMax);
+    this.twoTime = this.two ? this.twoTime + dt : 0;
+    {
+      const a = p[5], b = p[8];
+      const dx = b.x - a.x, dy = b.y - a.y, m = Math.hypot(dx, dy) || 1;
+      this.pdx += (dx / m - this.pdx) * ko;
+      this.pdy += (dy / m - this.pdy) * ko;
+      const n = Math.hypot(this.pdx, this.pdy) || 1;
+      this.pdx /= n; this.pdy /= n;
+      this.tipX = b.x; this.tipY = b.y;
+    }
+
+    this.fist = !this.point && !this.two && (this.fist ? this.open < CONFIG.fistExit : this.open < CONFIG.fistEnter);
     this.isOpen = this.isOpen ? this.open > CONFIG.openExit : this.open > CONFIG.openEnter;
-    this.cupped = !this.fist && !this.isOpen && this.open > CONFIG.cupMin && this.open < CONFIG.cupMax;
+    this.cupped = !this.point && !this.two && !this.fist && !this.isOpen && this.open > CONFIG.cupMin && this.open < CONFIG.cupMax;
     this.still = this.speed < CONFIG.stillSpeed;
     this.stillTime = this.still ? this.stillTime + dt : 0;
 

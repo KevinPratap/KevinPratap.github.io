@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 import { clamp } from '../util.js';
 
 const MAXD = 10;
-const TYPE = { shock: 0, lens: 1, heat: 2, swirl: 3 };
+const TYPE = { shock: 0, lens: 1, heat: 2, swirl: 3, tear: 4 };
 
 const COMPOSITE_FRAG = /* glsl */ `
 uniform sampler2D tVideo;
@@ -30,12 +30,20 @@ uniform float uVignette;
 uniform float uGrain;
 uniform vec3 uRimCol;
 uniform float uFade;
+uniform float uFlare;
+uniform vec3 uFlareCol;
+uniform float uGlitch;
+uniform float uGhost;
+uniform float uGhostOff;
+uniform float uEdge;
+uniform vec3 uEdgeCol;
 uniform vec4 uD[${MAXD}];
 uniform vec4 uDP[${MAXD}];
 varying vec2 vUv;
 
 vec2 vidUv(vec2 sp) { vec2 vn = (sp - uVidOff) / uVidSize; return vec2(1.0 - vn.x, 1.0 - vn.y); }
 vec2 fxUv(vec2 sp) { return vec2(sp.x / uRes.x, 1.0 - sp.y / uRes.y); }
+float sq(float x) { return x * x; }
 float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
@@ -50,7 +58,16 @@ void main() {
   float horizon = 0.0;
   float rim = 0.0;
   float portal = 0.0;
+  float tear = 0.0;
   float ca = uCA;
+
+  if (uGlitch > 0.0) {
+    // Horizontal slice displacement, like a video signal tearing.
+    float band = floor(px.y / 18.0 + floor(uTime * 24.0) * 7.0);
+    float h = hash12(vec2(band, floor(uTime * 24.0)));
+    if (h > 0.62) px.x += (hash12(vec2(band, 3.1)) - 0.5) * 220.0 * uGlitch;
+    ca += uGlitch * 10.0;
+  }
 
   for (int i = 0; i < ${MAXD}; i++) {
     vec4 d = uD[i];
@@ -71,7 +88,7 @@ void main() {
       float hr = q.w;
       float inside = 1.0 - smoothstep(hr * 0.9, hr * 1.03, r);
       horizon = max(horizon, inside);
-      rim += exp(-pow((r - hr * 1.06) / (hr * 0.07 + 1.5), 2.0)) * min(d.w, 1.0) * 0.9;
+      rim += exp(-sq((r - hr * 1.06) / (hr * 0.07 + 1.5))) * min(d.w, 1.0) * 0.9;
       if (q.z > 0.0 && inside > 0.0) {
         // portal interior: a slowly spiraling starfield
         float rn = r / max(hr, 1.0);
@@ -85,13 +102,28 @@ void main() {
       // heat haze
       float fall = 1.0 - smoothstep(d.z * 0.25, d.z, r);
       p += vec2(sin(px.y * 0.085 + uTime * 11.0 + q.z), cos(px.x * 0.075 + uTime * 9.0 + q.z)) * d.w * fall;
-    } else {
+    } else if (q.x < 3.5) {
       // vortex swirl
       float fall = 1.0 - smoothstep(0.0, d.z, r);
       float ang = d.w * fall * fall;
       float s = sin(ang);
       float c = cos(ang);
       p = d.xy + mat2(c, -s, s, c) * (p - d.xy);
+    } else {
+      // space tear: the two sides of a line slide apart and the crack glows
+      vec2 t = vec2(cos(q.y), sin(q.y));
+      vec2 nrm = vec2(-t.y, t.x);
+      float along = dot(dv, t);
+      float perp = dot(dv, nrm);
+      float ext = 1.0 - smoothstep(d.z * 0.55, d.z, abs(along));
+      float side = perp < 0.0 ? -1.0 : 1.0;
+      float fall = exp(-abs(perp) / (d.z * 0.7 + 1.0));
+      p -= (t * side * 0.8 + nrm * side * 0.45) * d.w * ext * fall;
+      float gap = q.w * ext;
+      float crack = 1.0 - smoothstep(gap * 0.5, gap, abs(perp));
+      horizon = max(horizon, crack * 0.92);
+      tear += (exp(-sq(abs(perp) - gap * 0.75) / (gap * 0.5 + 1.5)) * 1.4 + crack * 0.25) * ext * q.z;
+      ca += ext * fall * 4.0 * q.z;
     }
   }
 
@@ -106,12 +138,39 @@ void main() {
   g *= 1.0 - uDim * 0.62;
   g = mix(g, g * uGrade, uGradeAmt);
   g *= 1.0 - horizon;
+  if (uGhost > 0.0) {
+    // afterimages: copies of the frame sliding out to both sides
+    vec3 ga = texture2D(tVideo, vidUv(p + vec2(uGhostOff, 0.0))).rgb;
+    vec3 gb = texture2D(tVideo, vidUv(p - vec2(uGhostOff * 0.6, 0.0))).rgb;
+    vec3 tint = mix(vec3(1.0), uRimCol, 0.6);
+    g = mix(g, max(g, (ga * 0.6 + gb * 0.4) * tint * 1.25), uGhost);
+  }
 
   vec3 fx = vec3(
     texture2D(tFx, fxUv(p + o)).r,
     texture2D(tFx, fxUv(p)).g,
     texture2D(tFx, fxUv(p - o)).b);
-  vec3 col = g + fx * (1.0 - horizon) + uRimCol * (rim + portal);
+  vec3 col = g + fx * (1.0 - horizon) + uRimCol * (rim + portal) + uRimCol * tear;
+
+  if (uFlare > 0.0) {
+    // Anamorphic streak: bright FX smeared sideways.
+    // Only a thin sliver of very bright light streaks, and the taps are
+    // averaged so big bright areas don't pile up into white.
+    vec3 fl = vec3(0.0);
+    for (int k = 1; k <= 4; k++) {
+      float o2 = float(k * k) * 22.0;
+      fl += max(texture2D(tFx, fxUv(p + vec2(o2, 0.0))).rgb - 1.1, 0.0) / float(k);
+      fl += max(texture2D(tFx, fxUv(p - vec2(o2, 0.0))).rgb - 1.1, 0.0) / float(k);
+    }
+    col += min(dot(fl, vec3(0.33)) / 4.17, 0.6) * uFlareCol * uFlare;
+  }
+  if (uEdge > 0.0) {
+    // Power-up aura licking in from the screen edges.
+    vec2 e = abs(vUv - 0.5) * 2.0;
+    float edge = max(e.x, e.y);
+    float flick = 0.6 + 0.4 * sin(vUv.x * 40.0 + uTime * 13.0) * sin(vUv.y * 31.0 - uTime * 17.0);
+    col += uEdgeCol * smoothstep(0.62, 1.0, edge) * flick * uEdge;
+  }
 
   vec2 vc = vUv - 0.5;
   col *= 1.0 - dot(vc, vc) * uVignette;
@@ -140,6 +199,20 @@ export const Post = {
   grade: [1, 1, 1], rim: [0.8, 0.7, 1],
   transients: [],
   persistent: [],
+  freezeT: 0, glitch: 0, ghost: 0, ghostOff: 0, ghostVel: 0, edge: 0, edgeTarget: 0, edgeCol: [1, 0.8, 0.2], flare: 0.5, flareCol: [1, 1, 1],
+
+  // Hit-stop: slows the simulation for a beat on big impacts.
+  freeze(t) { this.freezeT = Math.max(this.freezeT, t); },
+  get timeScale() { return this.freezeT > 0 ? 0.07 : 1; },
+  afterimage(amount, speed = 900) { this.ghost = Math.max(this.ghost, amount); this.ghostOff = 0; this.ghostVel = speed; },
+  glitchFor(amount) { this.glitch = Math.max(this.glitch, amount); },
+  wantEdge(x, col) { if (x > this.edgeTarget) { this.edgeTarget = x; if (col) this.edgeCol = col; } },
+  // A slash through space from (x0,y0) to (x1,y1).
+  tear({ x0, y0, x1, y1, strength = 26, life = 1.4, width = 10 }) {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    this.transients.push({ type: TYPE.tear, x: (x0 + x1) / 2, y: (y0 + y1) / 2, r: len / 2 + 30, speed: 0,
+      width, strength, life, t: 0, ang: Math.atan2(y1 - y0, x1 - x0) });
+  },
 
   shake(t) { this.trauma = Math.min(1, this.trauma + t); },
   flashScreen(amount, col = [1, 1, 1]) {
@@ -184,7 +257,7 @@ export class Pipeline {
     this.composer = new EffectComposer(this.renderer);
     this.composer.renderToScreen = false;
     this.composer.addPass(new RenderPass(this.fxScene, this.camera));
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.42, 0.25);
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.42, 0.38);
     this.composer.addPass(this.bloomPass);
 
     this.uniforms = {
@@ -209,6 +282,13 @@ export class Pipeline {
       uGrain: { value: 0.035 },
       uRimCol: { value: new THREE.Color(0.8, 0.7, 1) },
       uFade: { value: 1 },
+      uFlare: { value: 0.5 },
+      uFlareCol: { value: new THREE.Color(1, 1, 1) },
+      uGlitch: { value: 0 },
+      uGhost: { value: 0 },
+      uGhostOff: { value: 0 },
+      uEdge: { value: 0 },
+      uEdgeCol: { value: new THREE.Color(1, 0.8, 0.2) },
       uD: { value: Array.from({ length: MAXD }, () => new THREE.Vector4()) },
       uDP: { value: Array.from({ length: MAXD }, () => new THREE.Vector4()) },
     };
@@ -240,6 +320,7 @@ export class Pipeline {
   setCharacter(ch) {
     Post.grade = ch.grade;
     Post.rim = ch.b;
+    Post.flareCol = ch.b;
     this.uniforms.uGrade.value.set(...ch.grade);
     this.uniforms.uRimCol.value.setRGB(...ch.b);
   }
@@ -291,6 +372,15 @@ export class Pipeline {
     P.dimTarget = 0;
     P.bloomBoost *= Math.exp(-dt * 4);
     P.fade += (P.fadeTarget - P.fade) * (1 - Math.exp(-dt * 4));
+    P.freezeT = Math.max(0, P.freezeT - dt);
+    P.glitch *= Math.exp(-dt * 7);
+    P.ghost *= Math.exp(-dt * 3.2);
+    if (P.ghost < 0.01) P.ghost = 0;
+    P.ghostOff += P.ghostVel * dt;
+    P.ghostVel *= Math.exp(-dt * 4);
+    if (P.glitch < 0.01) P.glitch = 0;
+    P.edge += (P.edgeTarget - P.edge) * (1 - Math.exp(-dt * 5));
+    P.edgeTarget = 0;
 
     const u = this.uniforms;
     u.uFlash.value = P.flash;
@@ -303,6 +393,13 @@ export class Pipeline {
     u.uDim.value = P.dim;
     u.uVignette.value = 0.55 + P.dim * 1.1;
     u.uFade.value = P.fade;
+    u.uFlare.value = 0.5 + P.bloomBoost * 0.2;
+    u.uFlareCol.value.setRGB(...P.flareCol);
+    u.uGlitch.value = P.glitch;
+    u.uGhost.value = P.ghost;
+    u.uGhostOff.value = P.ghostOff;
+    u.uEdge.value = P.edge;
+    u.uEdgeCol.value.setRGB(...P.edgeCol);
     this.bloomPass.strength = 0.6 + P.bloomBoost * 0.4 + P.dim * 0.15;
 
     for (let i = P.transients.length - 1; i >= 0; i--) {
@@ -322,9 +419,18 @@ export class Pipeline {
     }
     for (const s of P.transients) {
       if (n >= MAXD) break;
-      const k = 1 - s.t / s.life;
-      D[n].set(s.x, s.y, s.r, s.strength * k * k);
-      DP[n].set(s.type, s.width, 0, 0);
+      if (s.type === TYPE.tear) {
+        // opens in a snap, hangs, then seals up
+        const open = Math.min(1, s.t / 0.07);
+        const heal = s.t < s.life * 0.4 ? 1 : Math.pow(1 - (s.t - s.life * 0.4) / (s.life * 0.6), 2);
+        const k = open * heal;
+        D[n].set(s.x, s.y, s.r, s.strength * k);
+        DP[n].set(s.type, s.ang, 1.2 * k + (s.t < 0.12 ? 1.5 : 0), s.width * k);
+      } else {
+        const k = 1 - s.t / s.life;
+        D[n].set(s.x, s.y, s.r, s.strength * k * k);
+        DP[n].set(s.type, s.width, 0, 0);
+      }
       n++;
     }
     for (; n < MAXD; n++) D[n].set(0, 0, 0, 0);

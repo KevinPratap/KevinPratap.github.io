@@ -2,6 +2,7 @@
 // then get bloomed, so colors here are HDR (values above 1 glow harder).
 
 export const NOISE = /* glsl */ `
+float sq(float x) { return x * x; }
 float hash31(vec3 p) {
   p = fract(p * 0.3183099 + vec3(0.11, 0.17, 0.13));
   p *= 17.0;
@@ -90,7 +91,7 @@ void main() {
   float n = fbm(vec3(cos(sw) * 2.2, sin(sw) * 2.2, r * 5.0 - uTime * 0.8 + uSeed));
   float streak = pow(n, 2.1) * 2.4;
   float doppler = 0.6 + 0.6 * cos(a - 0.7 + uTime * 0.3);
-  float rim = exp(-pow((r - ri * 1.1) / (ri * 0.1 + 0.01), 2.0));
+  float rim = exp(-sq((r - ri * 1.1) / (ri * 0.1 + 0.01)));
   vec3 col = mix(uColorA, uColorB, clamp(streak, 0.0, 1.0)) * band * streak * doppler * 1.05;
   col += uColorB * rim * 1.3 * (0.7 + doppler * 0.5);
   col += uColorA * exp(-max(r - ri, 0.0) * 3.5) * 0.12 * step(ri, r);
@@ -106,7 +107,7 @@ void main() {
   float a = atan(p.y, p.x);
   float n = fbm(vec3(cos(a) * 3.0, sin(a) * 3.0, uTime * 2.0 + uSeed));
   float rr = uParam.x + (n - 0.5) * uParam.z;
-  float k = exp(-pow((r - rr) / max(uParam.y, 0.002), 2.0));
+  float k = exp(-sq((r - rr) / max(uParam.y, 0.002)));
   vec3 col = uParam.w > 0.5
     ? fireRamp(k * (0.55 + n * 0.9)) * k * 1.5
     : mix(uColorA, uColorB, k) * k * 1.5;
@@ -144,6 +145,91 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }`,
 
+  // Ki energy ball: white core, colored body, fresnel rim, swirling surface
+  // and a spiky corona. uParam.x = charge 0..1, uParam.y = corona spikes.
+  kiOrb: QUAD_HEAD + /* glsl */ `
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p);
+  float a = atan(p.y, p.x);
+  float R = 0.42;
+  float sw = fbm(vec3(p * 3.2 + vec2(uTime * 0.7, -uTime * 0.9), uTime * 1.3 + uSeed));
+  float body = 1.0 - smoothstep(R * 0.9, R, r);
+  float rim = exp(-sq((r - R * 0.97) / 0.04));
+  float core = exp(-r * r * 45.0);
+  float spikes = fbm(vec3(cos(a) * 4.0, sin(a) * 4.0, uTime * 5.0 + uSeed));
+  float corona = exp(-max(r - R, 0.0) * (9.0 - uParam.y * 3.0 - spikes * 4.0)) * smoothstep(R * 0.85, R, r);
+  float swirl = sq(sw);
+  vec3 col = uColorA * body * (0.12 + swirl * 0.55);
+  col += mix(uColorA, uColorB, 0.5) * body * pow(max(1.0 - r / R, 0.0), 1.5) * 0.25;
+  col += uColorB * rim * 0.7;
+  col += vec3(1.0) * core * (0.35 + uParam.x * 0.45);
+  col += uColorA * corona * (0.12 + spikes * 0.3);
+  col *= uIntensity * (1.0 - smoothstep(0.85, 1.0, r));
+  gl_FragColor = vec4(col, 1.0);
+}`,
+
+  // Crackling ball lightning. uParam.x = charge.
+  plasma: QUAD_HEAD + /* glsl */ `
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p);
+  float a = atan(p.y, p.x);
+  float t = uTime * 7.0 + uSeed;
+  float f = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float n = fbm(vec3(p * (2.2 + fi), t * (0.6 + fi * 0.3) + fi * 13.0));
+    f += pow(1.0 - abs(n * 2.0 - 1.0), 14.0);
+  }
+  float ball = 1.0 - smoothstep(0.0, 0.46, r);
+  float core = exp(-r * r * 30.0);
+  float halo = exp(-r * 4.5);
+  vec3 col = uColorB * f * ball * 2.2 + vec3(1.0) * core * (0.5 + uParam.x * 0.6) + uColorA * halo * 0.18;
+  col *= uIntensity * (1.0 - smoothstep(0.85, 1.0, r));
+  gl_FragColor = vec4(col, 1.0);
+}`,
+
+  // Energy beam along vUv.x (0 = muzzle, 1 = far end).
+  // uParam.x = muzzle flare size, uParam.y = surge (widening pulses).
+  beam: QUAD_HEAD + /* glsl */ `
+void main() {
+  float x = vUv.x;
+  float y = vUv.y * 2.0 - 1.0;
+  float n = fbm(vec3(x * 18.0 - uTime * 26.0, y * 2.0, uTime * 3.0 + uSeed));
+  float n2 = fbm(vec3(x * 6.0 - uTime * 12.0, y * 4.0 + 5.0, uSeed));
+  float surge = 1.0 + uParam.y * 0.18 * sin(x * 40.0 - uTime * 60.0);
+  float w = (0.55 + 0.25 * n2) * surge;
+  float body = exp(-sq(y / w) * 2.2);
+  float core = exp(-sq(y / (w * 0.32)) * 3.0);
+  float edgeFlicker = (0.7 + 0.6 * n);
+  float fadeEnd = 1.0 - smoothstep(0.93, 1.0, x);
+  float fadeStart = smoothstep(0.0, 0.02, x);
+  vec3 col = uColorA * body * edgeFlicker * 0.55 + uColorB * core * 0.9 + vec3(1.0) * pow(core, 3.0) * 0.8;
+  col *= fadeEnd * fadeStart * uIntensity;
+  gl_FragColor = vec4(col, 1.0);
+}`,
+
+  // Flame aura rising around a center. uParam.x = strength, uParam.y = height.
+  aura: QUAD_HEAD + /* glsl */ `
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  p.y = -p.y;
+  float lift = p.y + 1.0;
+  vec2 q = vec2(p.x * 1.75, p.y * 1.05 + 0.3);
+  float n = fbm(vec3(p.x * 3.0, p.y * 2.2 - uTime * 3.4, uTime * 0.8 + uSeed));
+  float n2 = fbm(vec3(p.x * 7.0 + 3.0, p.y * 5.0 - uTime * 6.0, uSeed));
+  float shape = length(vec2(q.x, q.y * (0.75 - 0.35 * smoothstep(-0.3, 1.0, p.y))));
+  float hull = 0.5 + 0.28 * n + 0.14 * n2 + 0.2 * uParam.y * smoothstep(0.0, 1.0, p.y);
+  float outer = 1.0 - smoothstep(hull * 0.75, hull, shape);
+  float inner = 1.0 - smoothstep(hull * 0.35, hull * 0.62, shape);
+  float shell = outer - inner * 0.8;
+  float tongues = sq(n2) * outer * smoothstep(-0.2, 0.9, p.y) * 1.4;
+  vec3 col = uColorA * shell * (0.25 + n * 0.45) + uColorB * tongues * 0.55 + uColorA * outer * 0.04;
+  col *= uIntensity * uParam.x * (1.0 - smoothstep(0.6, 1.0, abs(p.x))) * (1.0 - smoothstep(0.7, 1.0, abs(p.y)));
+  gl_FragColor = vec4(col, 1.0);
+}`,
+
   // Magic circle texture with a charge arc. uParam: x charge, y arc radius, z arc width.
   sigil: QUAD_HEAD + /* glsl */ `
 void main() {
@@ -151,7 +237,7 @@ void main() {
   vec2 p = vUv * 2.0 - 1.0;
   float r = length(p);
   float a = atan(p.x, -p.y) / 6.2831853 + 0.5;
-  float arc = step(a, uParam.x) * exp(-pow((r - uParam.y) / uParam.z, 2.0));
+  float arc = step(a, uParam.x) * exp(-sq((r - uParam.y) / uParam.z));
   float pulse = 0.82 + 0.18 * sin(uTime * 6.0 - r * 18.0);
   vec3 col = uColorA * t.a * pulse * 1.15 + uColorB * arc * 2.4;
   gl_FragColor = vec4(col * uIntensity, 1.0);
@@ -205,6 +291,19 @@ void main() {
   float across = 1.0 - abs(vUv2.y * 2.0 - 1.0);
   float k = across * across * vUv2.x;
   gl_FragColor = vec4(vColor * k * 1.6, 1.0);
+}
+`;
+
+// Lightning segment: white-hot core with a colored halo. aUv.y across.
+export const LINE_FRAG = /* glsl */ `
+varying vec3 vColor;
+varying vec2 vUv2;
+void main() {
+  float y = abs(vUv2.y * 2.0 - 1.0);
+  float halo = exp(-y * y * 5.0);
+  float core = exp(-y * y * 60.0);
+  vec3 col = vColor * halo * 0.9 + (vColor * 0.4 + vec3(0.9)) * core * length(vColor) * 0.7;
+  gl_FragColor = vec4(col, 1.0);
 }
 `;
 

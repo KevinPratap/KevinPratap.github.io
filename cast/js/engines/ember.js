@@ -2,7 +2,7 @@
 import { CONFIG, CHARACTERS } from '../config.js';
 import { Post } from '../render/pipeline.js';
 import { FXQuad, Sigil, Trail, makeSigilTextures } from '../render/objects.js';
-import { clamp, rand, pick, lerp, TAU, easeInCubic } from '../util.js';
+import { clamp, rand, pick, lerp, TAU, easeInCubic, damp } from '../util.js';
 
 const CH = CHARACTERS.ember;
 const FIRE = [[1, 0.3, 0.06], [1, 0.5, 0.1], [1, 0.72, 0.25], [1, 0.9, 0.55]];
@@ -26,6 +26,8 @@ export class Ember {
         orb: new FXQuad(S, 'fireOrb', { a: CH.a, b: CH.b, intensity: 0 }),
         trail: new Trail(S, { width: 60, life: 0.3, fire: true }),
         whip: false, whipT: 0, whipCool: 0, calloutCool: 0, heat: null,
+        jet: 0, jetHeat: null, jetCallout: 0,
+        muzzle: new FXQuad(S, 'fireOrb', { a: CH.a, b: CH.b, intensity: 0 }),
       };
     }
     this.projectiles = [];
@@ -37,7 +39,7 @@ export class Ember {
   }
 
   enter() {
-    for (const st of Object.values(this.slots)) st.heat = Post.source('heat');
+    for (const st of Object.values(this.slots)) { st.heat = Post.source('heat'); st.jetHeat = Post.source('heat'); }
     this.wall.heat = Post.source('heat');
   }
 
@@ -48,6 +50,8 @@ export class Ember {
       st.orb.intensity = 0;
       st.trail.pts.length = 0; st.trail.update(0);
       release(st.heat); st.heat = null;
+      release(st.jetHeat); st.jetHeat = null;
+      st.jet = 0; st.muzzle.intensity = 0;
     }
     this.nova.orb.intensity = 0; this.nova.togetherT = 0;
     this.wall.on = false; this.wall.level = 0; this.wall.quad.intensity = 0;
@@ -188,7 +192,58 @@ export class Ember {
       level = Math.max(level, 0.35 + c * 1.3);
     }
     st.trail.update(time);
-    return level;
+    return Math.max(level, this.updateJet(st, h, dt, time));
+  }
+
+  // ---------- Dragon Fire ----------
+  // A pressurized stream: particles leave the fingertip fast, drag slows them,
+  // buoyancy lifts them and they swell as they cool, so it reads as fluid.
+  updateJet(st, h, dt, time) {
+    const { sfx, overlay } = this.ctx;
+    st.jetCallout -= dt;
+    const want = h.present && h.point && h.pointTime > 0.2 ? 1 : 0;
+    st.jet = damp(st.jet, want, want ? 7 : 10, dt);
+    if (st.jet < 0.01) {
+      st.jet = 0;
+      st.muzzle.intensity = 0;
+      if (st.jetHeat) st.jetHeat.strength = 0;
+      return 0.3;
+    }
+    const J = st.jet;
+    const x = h.tipX + h.pdx * h.scale * 0.15, y = h.tipY + h.pdy * h.scale * 0.15;
+    const ang = Math.atan2(h.pdy, h.pdx);
+    if (want && st.jetCallout <= 0) {
+      overlay.callout('火龍', 'Dragon Fire');
+      this.ctx.onMove(4);
+      sfx.play('whoomp');
+      st.jetCallout = 3;
+    }
+    const n = Math.floor(260 * J * dt + Math.random());
+    for (let i = 0; i < n; i++) {
+      const a = ang + rand(-0.13, 0.13), v = rand(900, 1500) * J;
+      this.ctx.particles.spawn({
+        x: x + rand(-4, 4), y: y + rand(-4, 4), vx: Math.cos(a) * v + h.vx * 0.3, vy: Math.sin(a) * v + h.vy * 0.3,
+        grav: -520, drag: 2.2, life: rand(0.45, 0.8), c: pick(FIRE), bright: rand(0.9, 1.5),
+        size: rand(5, 9), size1: rand(34, 58), fade: 1.4, flicker: 0.3,
+      });
+    }
+    if (Math.random() < J) this.spark(x, y, ang + rand(-0.2, 0.2), rand(1200, 2000), { grav: -100, life: 0.35 });
+    if (Math.random() < J * 0.4) this.ember(x + Math.cos(ang) * h.scale * 4, y + Math.sin(ang) * h.scale * 4, { vy: rand(-200, -60) });
+    st.muzzle.set(x, y, h.scale * (0.6 + 0.2 * Math.sin(time * 40)));
+    st.muzzle.intensity = 0.9 * J;
+    st.muzzle.param(1, 0, 0, 0);
+    st.muzzle.tick(time);
+    if (st.jetHeat) {
+      st.jetHeat.x = x + Math.cos(ang) * h.scale * 4;
+      st.jetHeat.y = y + Math.sin(ang) * h.scale * 4 - h.scale;
+      st.jetHeat.radius = h.scale * 5;
+      st.jetHeat.strength = 5 * J;
+    }
+    sfx.loop('roar', J);
+    sfx.loop('beam', J * 0.5);
+    Post.shake(dt * 0.9 * J);
+    Post.wantDim(0.3 * J);
+    return 0.6 + J;
   }
 
   crack(x, y, sc) {
