@@ -126,7 +126,7 @@ export class Raiju {
       }
 
       if (!busy && h.cupped && h.still) {
-        st.charge = Math.min(1, st.charge + dt / CONFIG.chargeTime);
+        st.charge = Math.min(1, st.charge + (dt * this.ctx.voice.boost) / CONFIG.chargeTime);
         if (st.charge >= 1 && !st.ready) {
           st.ready = true;
           fx.ring({ x: st.ox, y: st.oy, r0: h.scale * 0.5, r1: h.scale * 3.4, dur: 0.35, width: 8, a: CH.a, b: HOT, intensity: 2 });
@@ -147,7 +147,7 @@ export class Raiju {
 
       // Railgun: point, hold still, auto-fire at full charge.
       if (h.point && st.railCool <= 0 && h.speed < CONFIG.stillSpeed * 1.3) {
-        st.rail = Math.min(1, st.rail + dt / CONFIG.railCharge);
+        st.rail = Math.min(1, st.rail + (dt * this.ctx.voice.boost) / CONFIG.railCharge);
         if (st.rail >= 1) {
           this.fireRail(h);
           st.rail = 0;
@@ -185,6 +185,7 @@ export class Raiju {
       sfx.loop('buzz', 0.3 + c * 0.7);
       Post.wantDim(c * 0.45);
       Post.wantZoom(c * 0.08, st.ox, st.oy);
+      Post.wantAura(c * 0.55, CH.a, CH.b);
       if (c > 0.85) overlay.speedLines(((c - 0.85) / 0.15) * 0.5, st.ox, st.oy);
       level = Math.max(level, 0.4 + c * 1.3);
     }
@@ -219,6 +220,7 @@ export class Raiju {
       sfx.loop('charge', 0.3 + r * 0.7);
       Post.wantDim(r * 0.4);
       Post.wantZoom(r * 0.1, tx, ty);
+      Post.wantAura(r * 0.45, CH.a, CH.b);
       level = Math.max(level, 0.5 + r * 1.2);
     } else {
       st.tipBall.intensity = 0;
@@ -290,6 +292,7 @@ export class Raiju {
 
   discharge(x, y, power) {
     const { fx, sfx } = this.ctx;
+    power *= this.ctx.voice.power;
     const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
     sfx.play('thunder', power > 1.5 ? 1.4 : 0.8);
     Post.shockwave({ x, y, speed: 1300 * power, width: 60, strength: 26 * power, life: 0.55 });
@@ -469,6 +472,7 @@ export class Raiju {
     }
     k.mx = (L.cx + R.cx) / 2; k.my = (L.cy + R.cy) / 2;
     sfx.loop('buzz', 0.5 + lv * 0.5);
+    Post.wantAura(0.3 + lv * 0.45, CH.a, CH.b);
     Post.wantDim(lv * 0.45);
     Post.shake(dt * 0.5 * lv);
     levels[0] = Math.max(levels[0], 0.8 + lv);

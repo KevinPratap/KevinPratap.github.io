@@ -13,6 +13,9 @@ import { Nyx } from './engines/nyx.js';
 import { Raiju } from './engines/raiju.js';
 import { Kai } from './engines/kai.js';
 import { selectBackground } from './select-bg.js';
+import { Body } from './body.js';
+import { Voice } from './voice.js';
+import { Replay } from './replay.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -27,6 +30,8 @@ function show(name) {
 const video = $('cam');
 const sfx = new SFX();
 const tracker = new Tracker();
+const body = new Body();
+const voice = new Voice(sfx);
 const bg = selectBackground($('select-bg'));
 
 const state = {
@@ -34,7 +39,8 @@ const state = {
   debug: false, lastSeen: 0, clock: 0, used: Object.fromEntries(ORDER.map((k) => [k, new Set()])), pr: 1, fps: 60,
   combo: 0, lastMove: -99,
 };
-let pipeline, particles, streaks, lines, fx, energy, overlay, recorder, engines, wakeLock;
+let pipeline, particles, streaks, lines, fx, energy, overlay, recorder, engines, wakeLock, replay;
+let lastImpact = 0;
 
 // ---------- select screen ----------
 document.querySelectorAll('.char-card').forEach((card) => {
@@ -132,10 +138,13 @@ async function boot(useSim) {
     return;
   }
 
+  sfx.startRing();
+  pipeline.setMask(body.texture);
   if (useSim) {
     state.sim = state.sim || new SimHands(tracker);
     const tex = new THREE.CanvasTexture(state.sim.canvas);
     pipeline.setVideoSource(tex, state.sim.canvas.width, state.sim.canvas.height, Projector);
+    body.useCanvas(state.sim.mask);
   } else {
     state.sim = null;
     const tex = new THREE.VideoTexture(video);
@@ -153,6 +162,7 @@ async function boot(useSim) {
         return;
       }
     }
+    body.init();
   }
 
   $('demo-badge').hidden = !useSim;
@@ -182,7 +192,8 @@ function initGraphics() {
     onDone: showClip,
     onError: (m) => { toast(m); setRecUI(false); },
   });
-  const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, onMove: markMove };
+  replay = new Replay({ glCanvas: $('gl'), overlayCanvas: $('overlay'), sfx });
+  const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, voice, onMove: markMove };
   engines = { ember: new Ember(ctx), nyx: new Nyx(ctx), raiju: new Raiju(ctx), kai: new Kai(ctx) };
   state.pr = pipeline.pr;
   state.booted = true;
@@ -214,6 +225,7 @@ function enterCharacter(name, intro) {
   pipeline.setCharacter(ch);
   overlay.setCharacter(ch);
   recorder.setCharacter(ch);
+  replay.setCharacter(ch);
   energy.setColors(ch.a, ch.b);
   setAccent(ch);
   if (state.sim) state.sim.setCharacter(name);
@@ -258,6 +270,7 @@ function buildMoves(ch, name) {
 function markMove(i) {
   // Chain moves inside the window to build a combo.
   state.combo = state.clock - state.lastMove < CONFIG.comboWindow ? state.combo + 1 : 1;
+  replay.mark(0.5);
   state.lastMove = state.clock;
   if (state.combo >= 2) {
     overlay.combo(state.combo);
@@ -297,7 +310,8 @@ function frame(now) {
   if (pipeline.pr !== state.pr) { state.pr = pipeline.pr; onResize(); }
 
   if (state.sim) state.sim.update(dt);
-  else tracker.detect(video, now);
+  else { tracker.detect(video, now); body.detect(video, now); }
+  voice.update(dt, time);
   tracker.update(dt);
   const H = tracker.hands;
   for (const h of [H.L, H.R]) {
@@ -307,6 +321,16 @@ function frame(now) {
     }
   }
   if (H.L.present || H.R.present) state.lastSeen = time;
+
+  // Shouting charges the air around you: aura, edge glow, a rumble.
+  const ch = CHARACTERS[state.char];
+  if (voice.level > 0.1) {
+    const v = voice.level;
+    Post.wantAura(v * 1.15, ch.a, ch.b);
+    Post.wantEdge(v * 0.35, ch.a);
+    Post.shake(dt * v * 1.3);
+  }
+  overlay.setVoice(voice.on || !!voice.sim, voice.level);
 
   // Hit-stop: the world slows for a beat while the camera stays live.
   const gdt = dt * Post.timeScale;
@@ -321,6 +345,12 @@ function frame(now) {
   overlay.draw(dt);
   // Real elapsed time, so clip length and the end card match the wall clock.
   recorder.frame(Math.min(rawDt, 0.5));
+  // Big impacts are replay highlights; the buffer keeps rolling underneath.
+  if (Post.impactT > lastImpact + 0.02) replay.mark(1);
+  lastImpact = Post.impactT;
+  const hx = [H.L, H.R].filter((h) => h.present).map((h) => h.cx);
+  replay.capture(Math.min(rawDt, 0.1), hx.length ? hx.reduce((a, b) => a + b, 0) / hx.length : null);
+  $('btn-replay').classList.toggle('hot', replay.hasHighlight);
 
   $('hint').hidden = !!state.sim || time - state.lastSeen < 2.5;
   if (state.debug) drawDebug(H);
@@ -338,6 +368,38 @@ function drawDebug(H) {
 $('btn-swap').addEventListener('click', () => {
   const next = ORDER[(ORDER.indexOf(state.char) + 1) % ORDER.length];
   enterCharacter(next, true);
+});
+
+$('btn-mic').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (voice.on) {
+    voice.disable();
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = 'MIC OFF';
+    return;
+  }
+  try {
+    await voice.enable();
+    btn.setAttribute('aria-pressed', 'true');
+    btn.textContent = 'MIC ON';
+    toast('Shout while you charge. Louder means stronger, and your voice goes into your clips.');
+  } catch (err) {
+    console.warn(err);
+    toast('Mic access was blocked, so shouting won\'t power up moves. Allow the mic for this site to use it.');
+  }
+});
+
+$('btn-replay').addEventListener('click', async () => {
+  if (!replay || replay.building) return;
+  if (recorder.active) { toast('Stop the recording first.'); return; }
+  sfx.play('shutter');
+  $('replay-status').hidden = false;
+  const bar = $('replay-bar');
+  const clip = await replay.build((k) => { bar.style.transform = `scaleX(${k})`; });
+  $('replay-status').hidden = true;
+  bar.style.transform = 'scaleX(0)';
+  if (!clip) { toast('Cast something first. Replay keeps the last few seconds.'); return; }
+  showClip(clip, 'replay');
 });
 
 $('btn-sound').addEventListener('click', (e) => {
@@ -384,10 +446,11 @@ function fmtTime(t) {
 
 // ---------- clip preview ----------
 let clip = null;
-function showClip({ blob, url, ext, type }) {
+function showClip({ blob, url, ext, type }, kind = 'clip') {
   setRecUI(false);
   if (clip) URL.revokeObjectURL(clip.url);
-  const name = `cast-${state.char}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`;
+  $('clip-title').textContent = kind === 'replay' ? 'Your replay' : 'Your clip';
+  const name = `cast-${state.char}-${kind}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`;
   clip = { blob, url, name, type };
   window.__cast.clip = clip;
   const v = $('clip-video');
@@ -452,4 +515,4 @@ if (params.has('demo') || params.has('sim')) {
   selectChar(CHARACTERS[params.get('char')] ? params.get('char') : 'ember');
   if (params.has('auto')) boot(true);
 }
-window.__cast = { state, Post, get pipeline() { return pipeline; }, tracker, sfx, get engines() { return engines; } };
+window.__cast = { state, Post, get pipeline() { return pipeline; }, tracker, sfx, voice, body, get replay() { return replay; }, get engines() { return engines; } };

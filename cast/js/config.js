@@ -126,4 +126,4 @@ export const CHARACTERS = {
 };
 
 // Characters for the Google Fonts subset request (only these glyphs download).
-export const KANJI_SET = '炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷';
+export const KANJI_SET = '炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫';

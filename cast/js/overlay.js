@@ -13,6 +13,7 @@ export class Overlay {
     this.reticles = [];
     this.comboN = 0; this.comboT = 9;
     this.cracks = [];
+    this.voiceOn = false; this.voice = 0; this.voiceShow = 0;
     this.speed = 0; this.speedTarget = 0;
     this.focus = { x: 0, y: 0 };
     this.bars = 0; this.barsTarget = 0;
@@ -44,6 +45,8 @@ export class Overlay {
   }
 
   letterbox(amount) { this.barsTarget = Math.max(this.barsTarget, amount); }
+
+  setVoice(on, level) { this.voiceOn = on; this.voice = level; }
 
   combo(n) { this.comboN = n; this.comboT = 0; }
 
@@ -145,8 +148,47 @@ export class Overlay {
       if (c.t > c.dur) this.callouts.splice(i, 1);
     }
     this.callouts.forEach((c) => this.drawCallout(c));
+    this.voiceShow += ((this.voiceOn ? 1 : 0) - this.voiceShow) * (1 - Math.exp(-dt * 6));
+    if (this.voiceShow > 0.02) this.drawVoice();
     this.comboT += dt;
     if (this.comboN >= 2 && this.comboT < 2.4) this.drawCombo();
+  }
+
+  // Vertical shout meter on the left edge: fills and flares as you yell.
+  drawVoice() {
+    const g = this.g, H = this.h, base = Math.min(this.w, H);
+    const ch = this.ch;
+    const cA = ch ? ch.a : [1, 1, 1], cB = ch ? ch.b : [1, 1, 1];
+    const v = this.voice;
+    const x = 18, h = H * 0.32, y = H * 0.5 - h / 2, w = 8;
+    g.save();
+    g.globalAlpha = this.voiceShow * (0.55 + v * 0.45);
+    g.fillStyle = 'rgba(8,6,12,0.7)';
+    g.beginPath();
+    g.roundRect ? g.roundRect(x - 3, y - 3, w + 6, h + 6, 7) : g.rect(x - 3, y - 3, w + 6, h + 6);
+    g.fill();
+    const fillH = h * v;
+    const gr = g.createLinearGradient(0, y + h, 0, y);
+    gr.addColorStop(0, rgbToCss(cA, 1));
+    gr.addColorStop(1, rgbToCss(cB, 1));
+    g.fillStyle = gr;
+    g.shadowColor = rgbToCss(cA, 1);
+    g.shadowBlur = 8 + v * 22;
+    g.fillRect(x, y + h - fillH, w, fillH);
+    g.shadowBlur = 0;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = `900 ${Math.round(base * 0.034)}px ${KANJI_FONT}`;
+    g.fillStyle = v > 0.5 ? '#fff' : rgbToCss(cB, 0.85);
+    const jx = v > 0.6 ? rand(-2, 2) : 0;
+    g.fillText('叫', x + w / 2 + jx, y - base * 0.035);
+    if (v > 0.6) {
+      g.font = `700 ${Math.round(base * 0.022)}px "Cinzel", Georgia, serif`;
+      g.textAlign = 'left';
+      g.fillStyle = '#fff';
+      g.fillText('POWER UP', x + w + 10, y + h - fillH);
+    }
+    g.restore();
   }
 
   drawCombo() {

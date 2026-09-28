@@ -90,64 +90,71 @@ export class Recorder {
     if (this.t >= CONFIG.recordMaxSeconds) this.requestStop();
   }
 
-  drawWatermark() {
-    const g = this.g, W = this.canvas.width, H = this.canvas.height;
-    const fs = Math.max(14, Math.round(Math.min(W, H) * 0.028));
-    const text = `CAST  ·  try it → ${CONFIG.TRY_URL}`;
+  drawWatermark() { drawWatermark(this.g, this.canvas.width, this.canvas.height); }
+
+  drawEndCard(t) { drawEndCard(this.g, this.canvas.width, this.canvas.height, t, this.ch); }
+}
+
+export function drawWatermark(g, W, H) {
+  let fs = Math.max(12, Math.round(Math.min(W, H) * 0.028));
+  const text = `CAST  ·  try it → ${CONFIG.TRY_URL}`;
+  g.font = `600 ${fs}px "JetBrains Mono", ui-monospace, monospace`;
+  let tw = g.measureText(text).width;
+  // shrink to fit narrow (vertical) frames
+  if (tw > W * 0.8) {
+    fs = Math.max(9, Math.floor(fs * (W * 0.8) / tw));
     g.font = `600 ${fs}px "JetBrains Mono", ui-monospace, monospace`;
-    const tw = g.measureText(text).width;
-    const padX = fs * 0.9, bh = fs * 2;
-    const x = (W - tw) / 2 - padX, y = H - bh - fs * 1.4;
-    g.fillStyle = 'rgba(6,5,10,0.62)';
-    g.beginPath();
-    g.roundRect ? g.roundRect(x, y, tw + padX * 2, bh, bh / 2) : g.rect(x, y, tw + padX * 2, bh);
-    g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.95)';
-    g.textAlign = 'left';
-    g.textBaseline = 'middle';
-    g.fillText(text, x + padX, y + bh / 2);
+    tw = g.measureText(text).width;
   }
+  const padX = fs * 0.9, bh = fs * 2;
+  const x = (W - tw) / 2 - padX, y = H - bh - fs * 1.4;
+  g.fillStyle = 'rgba(6,5,10,0.62)';
+  g.beginPath();
+  g.roundRect ? g.roundRect(x, y, tw + padX * 2, bh, bh / 2) : g.rect(x, y, tw + padX * 2, bh);
+  g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillText(text, x + padX, y + bh / 2);
+}
 
-  drawEndCard(t) {
-    const g = this.g, W = this.canvas.width, H = this.canvas.height;
-    const base = Math.min(W, H);
-    const ch = this.ch;
-    const a = ch ? ch.a : [1, 0.4, 0.2], b = ch ? ch.b : [1, 0.8, 0.4];
-    g.fillStyle = `rgba(6,5,10,${Math.min(0.35, t * 0.8)})`;
-    g.fillRect(0, 0, W, H);
-    const k = easeOutCubic(Math.min(1, t / 0.45));
-    const rg = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, base * 0.7);
-    rg.addColorStop(0, rgbToCss(a, 0.22 * k));
-    rg.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = rg;
-    g.fillRect(0, 0, W, H);
+export function drawEndCard(g, W, H, t, ch) {
+  const base = Math.min(W, H);
+  const a = ch ? ch.a : [1, 0.4, 0.2], b = ch ? ch.b : [1, 0.8, 0.4];
+  g.fillStyle = `rgba(6,5,10,${Math.min(0.35, t * 0.8)})`;
+  g.fillRect(0, 0, W, H);
+  const k = easeOutCubic(Math.min(1, t / 0.45));
+  const rg = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, base * 0.7);
+  rg.addColorStop(0, rgbToCss(a, 0.22 * k));
+  rg.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = rg;
+  g.fillRect(0, 0, W, H);
 
-    g.save();
-    g.translate(W / 2, H * 0.44);
-    g.scale(1.25 - 0.25 * k, 1.25 - 0.25 * k);
-    g.globalAlpha = k;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    const big = base * 0.2;
-    g.font = `700 ${big}px "Cinzel", Georgia, serif`;
-    const lg = g.createLinearGradient(-big * 1.5, 0, big * 1.5, 0);
-    lg.addColorStop(0, rgbToCss(a, 1));
-    lg.addColorStop(1, rgbToCss(b, 1));
-    g.shadowColor = rgbToCss(a, 1);
-    g.shadowBlur = base * 0.04;
-    g.fillStyle = lg;
-    g.fillText('CAST', 0, 0);
-    g.shadowBlur = 0;
-    const fs = base * 0.04;
-    g.font = `500 ${fs}px "Sora", system-ui, sans-serif`;
-    g.fillStyle = 'rgba(255,255,255,0.92)';
-    g.fillText('Cast powers with your bare hands', 0, big * 0.78);
-    g.font = `600 ${fs * 1.05}px "JetBrains Mono", ui-monospace, monospace`;
-    g.fillStyle = rgbToCss(b, 1);
-    g.fillText(`try it → ${CONFIG.TRY_URL}`, 0, big * 0.78 + fs * 1.9);
-    g.font = `400 ${fs * 0.8}px "JetBrains Mono", ui-monospace, monospace`;
-    g.fillStyle = 'rgba(255,255,255,0.7)';
-    g.fillText(`more projects → ${CONFIG.MORE_URL}`, 0, big * 0.78 + fs * 3.4);
-    g.restore();
-  }
+  g.save();
+  g.translate(W / 2, H * 0.44);
+  g.scale(1.25 - 0.25 * k, 1.25 - 0.25 * k);
+  g.globalAlpha = k;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  const big = base * 0.2;
+  g.font = `700 ${big}px "Cinzel", Georgia, serif`;
+  const lg = g.createLinearGradient(-big * 1.5, 0, big * 1.5, 0);
+  lg.addColorStop(0, rgbToCss(a, 1));
+  lg.addColorStop(1, rgbToCss(b, 1));
+  g.shadowColor = rgbToCss(a, 1);
+  g.shadowBlur = base * 0.04;
+  g.fillStyle = lg;
+  g.fillText('CAST', 0, 0);
+  g.shadowBlur = 0;
+  const fs = base * 0.04;
+  g.font = `500 ${fs}px "Sora", system-ui, sans-serif`;
+  g.fillStyle = 'rgba(255,255,255,0.92)';
+  g.fillText('Cast powers with your bare hands', 0, big * 0.78);
+  g.font = `600 ${fs * 1.05}px "JetBrains Mono", ui-monospace, monospace`;
+  g.fillStyle = rgbToCss(b, 1);
+  g.fillText(`try it → ${CONFIG.TRY_URL}`, 0, big * 0.78 + fs * 1.9);
+  g.font = `400 ${fs * 0.8}px "JetBrains Mono", ui-monospace, monospace`;
+  g.fillStyle = 'rgba(255,255,255,0.7)';
+  g.fillText(`more projects → ${CONFIG.MORE_URL}`, 0, big * 0.78 + fs * 3.4);
+  g.restore();
 }

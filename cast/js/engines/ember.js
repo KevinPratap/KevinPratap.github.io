@@ -121,7 +121,7 @@ export class Ember {
         st.charge = Math.max(0, st.charge - CONFIG.chargeDecay * 2 * dt);
         st.ready = false;
       } else if (h.cupped && h.still) {
-        st.charge = Math.min(1, st.charge + dt / CONFIG.chargeTime);
+        st.charge = Math.min(1, st.charge + (dt * this.ctx.voice.boost) / CONFIG.chargeTime);
         if (st.charge >= 1 && !st.ready) {
           st.ready = true;
           fx.ring({ x: st.ox, y: st.oy, r0: h.scale * 0.6, r1: h.scale * 3.2, dur: 0.45, width: 10, fire: true });
@@ -189,6 +189,7 @@ export class Ember {
       sfx.loop('charge', c);
       Post.wantDim(c * 0.5);
       Post.wantZoom(c * 0.08, st.ox, st.oy);
+      Post.wantAura(c * 0.55, CH.a, CH.b);
       if (c > 0.85) overlay.speedLines(((c - 0.85) / 0.15) * 0.6, st.ox, st.oy);
       level = Math.max(level, 0.35 + c * 1.3);
     }
@@ -255,6 +256,7 @@ export class Ember {
       st.jetHeat.strength = 5 * J;
     }
     sfx.loop('roar', J);
+    Post.wantAura(0.4 * J, CH.a, CH.b);
     sfx.loop('beam', J * 0.5);
     Post.shake(dt * 0.9 * J);
     Post.wantDim(0.3 * J);
@@ -336,6 +338,7 @@ export class Ember {
 
   explode(x, y, power) {
     const { fx, sfx, overlay } = this.ctx;
+    power *= this.ctx.voice.power;
     const base = Math.min(window.innerWidth, window.innerHeight);
     fx.glow({ x, y, s0: base * 0.1 * power, s1: base * 0.9 * power, dur: 0.45, a: [1, 0.45, 0.1], b: [1, 0.9, 0.6], intensity: 3 });
     fx.ring({ x, y, r0: 10, r1: base * 0.45 * power, dur: 0.55, width: 26 * power, fire: true, noise: 0.12 });
@@ -394,12 +397,14 @@ export class Ember {
       this.ctx.sfx.loop('charge', 0.4 + build * 0.5);
       Post.wantDim(build * 0.4);
       Post.wantZoom(build * 0.13, n.mid.x, n.mid.y);
+      Post.wantAura(build * 0.9, CH.a, CH.b);
       Post.shake(dt * 0.5 * build);
     }
   }
 
   novaBurst(x, y, power) {
     const { fx, sfx, overlay } = this.ctx;
+    power *= this.ctx.voice.power;
     const W = window.innerWidth, H = window.innerHeight;
     const diag = Math.hypot(W, H), base = Math.min(W, H);
     Post.impact(0.11, [1, 0.96, 0.9]);
@@ -474,6 +479,7 @@ export class Ember {
       sfx.loop('roar', w.level);
       Post.wantDim(0.4 * w.level);
       Post.wantZoom(0.05 * w.level, w.x, w.y - H * 0.4);
+      Post.wantAura(0.7 * w.level, CH.a, CH.b);
       Post.shake(dt * 0.6 * w.level);
       overlay.letterbox(w.level);
       levels[0] = Math.max(levels[0], 0.5 + w.level);

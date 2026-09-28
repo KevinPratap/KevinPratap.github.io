@@ -26,6 +26,10 @@ uniform float uImpactPhase;
 uniform sampler2D tLight;
 uniform sampler2D tLight2;
 uniform float uLight;
+uniform sampler2D tMask;
+uniform float uAura;
+uniform vec3 uAuraA;
+uniform vec3 uAuraB;
 uniform vec3 uImpactCol;
 uniform float uDim;
 uniform vec3 uGrade;
@@ -162,6 +166,30 @@ void main() {
   g += light * uLight * 0.06;
   vec3 col = g + fx * (1.0 - horizon) + uRimCol * (rim + portal) + uRimCol * tear;
 
+  if (uAura > 0.0) {
+    // Full-body aura: the person's silhouette, smeared upward and sideways
+    // through wavering offsets, drawn only outside the body. Reads as flame
+    // pouring off your whole outline.
+    float m = texture2D(tMask, vidUv(p)).r;
+    float fl = 0.0;
+    for (int i = 1; i <= 6; i++) {
+      float fi = float(i);
+      float w1 = sin(px.y * 0.035 + uTime * 9.0 + fi * 1.7) + sin(px.x * 0.05 - uTime * 6.0 + fi);
+      vec2 up = vec2(w1 * 5.0 * fi, 21.0 * fi);
+      float a = texture2D(tMask, vidUv(p + up)).r;
+      float b = texture2D(tMask, vidUv(p + vec2(10.0 * fi, 7.0 * fi))).r;
+      float c = texture2D(tMask, vidUv(p + vec2(-10.0 * fi, 7.0 * fi))).r;
+      fl = max(fl, max(a, max(b, c) * 0.7) * (1.0 - fi / 7.0));
+    }
+    float outside = 1.0 - smoothstep(0.25, 0.65, m);
+    float streak = 0.55 + 0.45 * sin(px.x * 0.09 + sin(px.y * 0.025 - uTime * 7.0) * 2.5);
+    float aura = fl * outside * streak;
+    // a thin hot rim just inside the silhouette edge
+    float above = texture2D(tMask, vidUv(p - vec2(0.0, 7.0))).r;
+    float rimIn = smoothstep(0.4, 0.7, m) * (1.0 - above);
+    col += (uAuraA * aura * 1.7 + uAuraB * sq(aura) * aura * 2.0 + uAuraB * rimIn * 1.0) * uAura;
+  }
+
   if (uFlare > 0.0) {
     // Anamorphic streak: bright FX smeared sideways.
     // Only a thin sliver of very bright light streaks, and the taps are
@@ -224,6 +252,7 @@ export const Post = {
   grade: [1, 1, 1], rim: [0.8, 0.7, 1],
   transients: [],
   persistent: [],
+  aura: 0, auraTarget: 0, auraA: [1, 0.7, 0.2], auraB: [1, 0.95, 0.7],
   freezeT: 0, glitch: 0, ghost: 0, ghostOff: 0, ghostVel: 0, edge: 0, edgeTarget: 0, edgeCol: [1, 0.8, 0.2], flare: 0.5, flareCol: [1, 1, 1],
 
   // Hit-stop: slows the simulation for a beat on big impacts.
@@ -231,6 +260,8 @@ export const Post = {
   get timeScale() { return this.freezeT > 0 ? 0.07 : 1; },
   afterimage(amount, speed = 900) { this.ghost = Math.max(this.ghost, amount); this.ghostOff = 0; this.ghostVel = speed; },
   glitchFor(amount) { this.glitch = Math.max(this.glitch, amount); },
+  // Full-body aura strength (0..1+) and its colors; strongest request wins.
+  wantAura(x, a, b) { if (x > this.auraTarget) { this.auraTarget = x; if (a) { this.auraA = a; this.auraB = b || a; } } },
   wantEdge(x, col) { if (x > this.edgeTarget) { this.edgeTarget = x; if (col) this.edgeCol = col; } },
   // A slash through space from (x0,y0) to (x1,y1).
   tear({ x0, y0, x1, y1, strength = 26, life = 1.4, width = 10 }) {
@@ -308,6 +339,10 @@ export class Pipeline {
       tLight: { value: null },
       tLight2: { value: null },
       uLight: { value: 2.2 },
+      tMask: { value: null },
+      uAura: { value: 0 },
+      uAuraA: { value: new THREE.Color(1, 0.7, 0.2) },
+      uAuraB: { value: new THREE.Color(1, 0.95, 0.7) },
       uDim: { value: 0 },
       uGrade: { value: new THREE.Vector3(1, 1, 1) },
       uGradeAmt: { value: 0.55 },
@@ -349,6 +384,8 @@ export class Pipeline {
     this.projector = projector;
     this.resize();
   }
+
+  setMask(texture) { this.uniforms.tMask.value = texture; }
 
   setCharacter(ch) {
     Post.grade = ch.grade;
@@ -424,6 +461,8 @@ export class Pipeline {
     if (P.glitch < 0.01) P.glitch = 0;
     P.edge += (P.edgeTarget - P.edge) * (1 - Math.exp(-dt * 5));
     P.edgeTarget = 0;
+    P.aura += (P.auraTarget - P.aura) * (1 - Math.exp(-dt * (P.auraTarget > P.aura ? 8 : 3)));
+    P.auraTarget = 0;
 
     const u = this.uniforms;
     u.uFlash.value = P.flash;
@@ -442,6 +481,9 @@ export class Pipeline {
     u.uFlare.value = 0.5 + P.bloomBoost * 0.2;
     u.uFlareCol.value.setRGB(...P.flareCol);
     u.uGlitch.value = P.glitch;
+    u.uAura.value = this.uniforms.tMask.value ? P.aura : 0;
+    u.uAuraA.value.setRGB(...P.auraA);
+    u.uAuraB.value.setRGB(...P.auraB);
     u.uGhost.value = P.ghost;
     u.uGhostOff.value = P.ghostOff;
     u.uEdge.value = P.edge;

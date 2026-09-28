@@ -213,6 +213,7 @@ export class Nyx {
       sfx.loop('vortex', P);
       Post.wantDim(P * 0.35);
       Post.wantZoom(P * 0.06, st.x, st.y);
+      Post.wantAura(P * 0.35, [0.4, 0.16, 1.0], [0.85, 0.7, 1.0]);
       return 0.35 + P * 1.1;
     }
     return 0.3;
@@ -283,9 +284,11 @@ export class Nyx {
     const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
     const x = h.cx, y = h.cy;
     const dir = toCamera ? null : h.dir();
+    const pw = this.ctx.voice.power;
     this.slots[h.slot].pushCool = 0.45;
-    this.impulse(x, y, toCamera ? diag : diag * 0.7, toCamera ? 2600 : 2000, dir);
-    Post.shockwave({ x, y, speed: 1300, width: 80, strength: toCamera ? 46 : 36, life: 0.75 });
+    this.impulse(x, y, toCamera ? diag : diag * 0.7, (toCamera ? 2600 : 2000) * pw, dir);
+    Post.shockwave({ x, y, speed: 1300, width: 80, strength: (toCamera ? 46 : 36) * pw, life: 0.75 });
+    if (pw > 1.35) { Post.impact(0.08, [0.85, 0.78, 1]); this.ctx.overlay.crack(x, y, 1); }
     Post.shockwave({ x, y, speed: 700, width: 50, strength: 20, life: 0.6 });
     fx.ring({ x, y, r0: h.scale * 0.5, r1: diag * (toCamera ? 0.75 : 0.5), dur: 0.6, width: 22, a: CH.a, b: CH.b, noise: 0.05, intensity: 1.8 });
     fx.glow({ x, y, s0: h.scale, s1: h.scale * 6, dur: 0.3, a: CH.a, b: CH.b, intensity: 2.4 });
@@ -327,7 +330,7 @@ export class Nyx {
       }
     }
     s.lost = hold ? 0 : s.lost + dt;
-    if (hold) s.t += dt;
+    if (hold) s.t += dt * this.ctx.voice.boost;
 
     if (!s.on && s.t > 0.2) {
       s.on = true;
@@ -386,6 +389,7 @@ export class Nyx {
     if (pr > 0.05) sfx.loop('hum', pr);
     Post.wantDim(0.5 + lv * 0.3 + pr * 0.15);
     Post.wantZoom(0.05 + lv * 0.08 + pr * 0.04, s.x, s.y);
+    Post.wantAura(0.35 + lv * 0.45 + pr * 0.3, [0.4, 0.16, 1.0], [0.85, 0.7, 1.0]);
     Post.shake(dt * (0.5 + lv * 0.9 + pr * 0.6));
     overlay.letterbox(Math.max(lv, pr));
     levels[0] = Math.max(levels[0], 0.8 + lv);

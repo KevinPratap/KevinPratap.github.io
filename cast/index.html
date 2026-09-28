@@ -120,6 +120,7 @@
     <div class="hud-actions">
       <button id="btn-moves" class="chip" type="button" aria-expanded="false" aria-controls="moves-panel">MOVES</button>
       <button id="btn-swap" class="chip" type="button">SWAP</button>
+      <button id="btn-mic" class="chip" type="button" aria-pressed="false" title="Shout to power up">MIC OFF</button>
       <button id="btn-sound" class="chip" type="button" aria-pressed="true">SOUND ON</button>
       <button id="btn-debug" class="chip" type="button" aria-pressed="false">DEBUG</button>
     </div>
@@ -130,6 +131,7 @@
   <aside id="moves-panel" aria-label="Moves">
     <div class="moves-head"><p class="moves-title">Moves</p><span id="moves-progress">0/5 found</span></div>
     <ol id="moves-list"></ol>
+    <p class="moves-tip">Turn on <b>MIC</b> and shout while charging to power up. Hit <b>REPLAY</b> after a big move to save it with slow-mo.</p>
   </aside>
 
   <pre id="debug-readout" hidden></pre>
@@ -141,7 +143,15 @@
 
   <footer class="hud-bottom">
     <div id="rec-pill" hidden><i></i><span id="rec-label">REC</span><span id="rec-time">0:00</span></div>
-    <button id="btn-record" type="button" aria-pressed="false" aria-label="Start recording"><span></span></button>
+    <div id="replay-status" hidden><span>Building replay</span><i><b id="replay-bar"></b></i></div>
+    <div class="rec-row">
+      <span class="rec-side"></span>
+      <button id="btn-record" type="button" aria-pressed="false" aria-label="Start recording"><span></span></button>
+      <button id="btn-replay" type="button" aria-label="Save instant replay of the last few seconds">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M11 9l4 3-4 3z" fill="currentColor"/></svg>
+        <em>REPLAY</em>
+      </button>
+    </div>
     <div class="watermark">try it → <b>kevinpratap.github.io/cast</b></div>
   </footer>
 </section>

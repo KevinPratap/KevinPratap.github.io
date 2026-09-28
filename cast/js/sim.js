@@ -156,6 +156,18 @@ export class SimHands {
     g.fillRect(370, 600, 540, 130);
     g.strokeStyle = 'rgba(255,214,150,0.25)'; g.lineWidth = 3;
     g.beginPath(); g.arc(640, 330, 72, -2.4, -0.7); g.stroke();
+    // matching silhouette mask for the body aura
+    const m = document.createElement('canvas');
+    m.width = 320; m.height = 180;
+    const mg = m.getContext('2d');
+    mg.fillStyle = '#000'; mg.fillRect(0, 0, 320, 180);
+    mg.scale(0.25, 0.25);
+    mg.fillStyle = '#fff';
+    mg.beginPath(); mg.arc(640, 330, 72, 0, Math.PI * 2); mg.fill();
+    mg.fillRect(612, 390, 56, 40);
+    mg.beginPath(); mg.ellipse(640, 600, 270, 190, 0, Math.PI, 0); mg.fill();
+    mg.fillRect(370, 600, 540, 130);
+    this.mask = m;
     return c;
   }
 

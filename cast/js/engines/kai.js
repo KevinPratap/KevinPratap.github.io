@@ -287,7 +287,7 @@ export class Kai {
 
     if (w.phase === 'idle' || w.phase === 'charge') {
       const calm = together && L.speed < CONFIG.stillSpeed * 3 && R.speed < CONFIG.stillSpeed * 3;
-      if (calm) { w.t += dt; w.lost = 0; } else { w.lost += dt; }
+      if (calm) { w.t += dt * this.ctx.voice.boost; w.lost = 0; } else { w.lost += dt; }
       if (w.phase === 'idle' && w.t > 0.35) {
         w.phase = 'charge';
         sfx.play('ready');
@@ -342,6 +342,7 @@ export class Kai {
       sfx.loop('charge', 0.35 + lv * 0.65);
       if (lv > 0.3) sfx.loop('drone', lv * 0.6);
       Post.wantZoom(0.03 + lv * 0.13, w.x, w.y);
+      Post.wantAura(0.2 + lv * 0.7, this.cA, this.cB);
       Post.wantDim(0.25 + lv * 0.45);
       Post.shake(dt * (0.3 + lv * 1.4));
       overlay.letterbox(lv);
@@ -439,7 +440,7 @@ export class Kai {
     w.dur = (0.9 + lv * 1.6) * (mode === 'camera' ? 0.55 : 1) * (this.awake ? 1.3 : 1);
     const m = Math.hypot(vx, vy) || 1;
     w.dx = vx / m; w.dy = vy / m;
-    w.w = w.sc * (0.9 + lv * 1.1) * this.pow;
+    w.w = w.sc * (0.9 + lv * 1.1) * this.pow * (1 + this.ctx.voice.peak * 0.5);
     w.beam.u.uColorA.value.set(...this.cA); w.beam.u.uColorB.value.set(...this.cB);
     w.beam2.u.uColorA.value.set(...this.cA); w.beam2.u.uColorB.value.set(...this.cB);
     Post.freeze(0.08);
@@ -472,6 +473,7 @@ export class Kai {
 
   boom(x, y, power) {
     const { fx, sfx } = this.ctx;
+    power *= this.ctx.voice.power;
     const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H), base = Math.min(W, H);
     power *= this.pow;
     Post.impact(0.1, [1, 1, 1]);
@@ -513,7 +515,7 @@ export class Kai {
       }
     }
     if (cond) {
-      s.t += dt; s.lost = 0;
+      s.t += dt * this.ctx.voice.boost; s.lost = 0;
       const mx = (L.cx + R.cx) / 2, my = Math.min(L.cy, R.cy);
       s.level = clamp((s.t - 0.3) / 5, 0, 1);
       s.r = base * (0.06 + 0.3 * s.level) * this.pow;
@@ -563,6 +565,7 @@ export class Kai {
     sfx.loop('hum', 0.4 + lv * 0.6);
     sfx.loop('drone', 0.3 + lv * 0.5);
     Post.wantZoom(0.03 + lv * 0.08, s.x, s.y);
+    Post.wantAura(0.35 + lv * 0.45, this.cA, this.cB);
     Post.wantDim(0.35 + lv * 0.35);
     Post.wantEdge(0.12 + lv * 0.3, this.cA);
     Post.shake(dt * (0.3 + lv));
@@ -639,11 +642,12 @@ export class Kai {
       a.awake -= dt;
       const fade = Math.min(1, a.awake / 1.5);
       Post.wantEdge(0.2 * fade + 0.06 * Math.sin(time * 6) * fade, CH.gold);
+      Post.wantAura((0.55 + 0.1 * Math.sin(time * 7)) * fade, CH.gold, CH.goldB);
       if (a.awake <= 0) { overlay.setCharacter(CH); sfx.play('collapse'); overlay.callout('気', 'Power Fades', { dur: 0.9 }); }
     }
     const cond = L.present && R.present && L.fist && R.fist && L.speed < CONFIG.stillSpeed * 3 && R.speed < CONFIG.stillSpeed * 3
       && this.wave.phase === 'idle' && !this.sphere.on;
-    if (cond) a.t += dt; else a.t = Math.max(0, a.t - dt * 3);
+    if (cond) a.t += dt * this.ctx.voice.boost; else a.t = Math.max(0, a.t - dt * 3);
     const c = clamp((a.t - 0.25) / 1.9, 0, 1);
     a.charging = damp(a.charging, c > 0 ? 0.35 + c * 0.9 : 0, 8, dt);
     if (c > 0) {
@@ -653,6 +657,7 @@ export class Kai {
       Post.wantEdge(0.15 + c * 0.45, CH.gold);
       Post.aberrate(c * 3);
       Post.wantZoom(c * 0.12, (L.cx + R.cx) / 2, (L.cy + R.cy) / 2);
+      Post.wantAura(0.4 + c * 1.0, CH.gold, CH.goldB);
       overlay.letterbox(c);
       overlay.speedLines(c * 0.6, (L.cx + R.cx) / 2, (L.cy + R.cy) / 2);
       if (Math.random() < 0.3 + c) {

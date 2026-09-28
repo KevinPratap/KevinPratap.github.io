@@ -42,13 +42,73 @@ export class SFX {
     this.endStream();
     this.recDest = this.ctx.createMediaStreamDestination();
     this.comp.connect(this.recDest);
+    if (this.mic) this.mic.connect(this.recDest);
     return this.recDest.stream;
   }
 
   endStream() {
     if (!this.recDest) return;
     try { this.comp.disconnect(this.recDest); } catch (e) { /* already disconnected */ }
+    if (this.mic) { try { this.mic.disconnect(this.recDest); } catch (e) { /* not connected */ } }
     this.recDest = null;
+  }
+
+  // The mic bus joins recordings and the replay buffer, never the speakers.
+  attachMic(node) {
+    if (this.mic) {
+      if (this.recDest) { try { this.mic.disconnect(this.recDest); } catch (e) { /* */ } }
+      if (this.ringIn) { try { this.mic.disconnect(this.ringIn); } catch (e) { /* */ } }
+    }
+    this.mic = node;
+    if (node) {
+      if (this.recDest) node.connect(this.recDest);
+      if (this.ringIn) node.connect(this.ringIn);
+    }
+  }
+
+  // Rolling capture of everything audible (SFX + mic) for instant replays.
+  startRing(seconds = 9) {
+    if (!this.ctx || this.ring) return;
+    const ctx = this.ctx, sr = ctx.sampleRate, len = Math.floor(sr * seconds);
+    this.ring = { L: new Float32Array(len), R: new Float32Array(len), len, abs: 0, t: 0 };
+    this.ringIn = ctx.createGain();
+    this.comp.connect(this.ringIn);
+    if (this.mic) this.mic.connect(this.ringIn);
+    const proc = ctx.createScriptProcessor(4096, 2, 2);
+    this.ringIn.connect(proc);
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    proc.connect(mute);
+    mute.connect(ctx.destination);
+    proc.onaudioprocess = (e) => {
+      const r = this.ring, inL = e.inputBuffer.getChannelData(0);
+      const inR = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : inL;
+      for (let i = 0; i < inL.length; i++) {
+        const j = (r.abs + i) % r.len;
+        r.L[j] = inL[i]; r.R[j] = inR[i];
+      }
+      r.abs += inL.length;
+      r.t = ctx.currentTime;
+    };
+    this.ringProc = proc;
+  }
+
+  // AudioBuffer covering context time t0..t1 (clamped to what's buffered).
+  ringSlice(t0, t1) {
+    const r = this.ring;
+    if (!r || !r.abs) return null;
+    const sr = this.ctx.sampleRate;
+    const end = r.abs, start = Math.max(0, end - r.len + 1);
+    let a = Math.round(end - (r.t - t0) * sr), b = Math.round(end - (r.t - t1) * sr);
+    a = Math.max(start, Math.min(end, a)); b = Math.max(a + 1, Math.min(end, b));
+    const n = b - a;
+    const buf = this.ctx.createBuffer(2, n, sr);
+    const L = buf.getChannelData(0), R = buf.getChannelData(1);
+    for (let i = 0; i < n; i++) {
+      const j = (a + i) % r.len;
+      L[i] = r.L[j]; R[i] = r.R[j];
+    }
+    return buf;
   }
 
   setEnabled(on) {
