@@ -3,1228 +3,147 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>Cast — hand-tracked elemental powers</title>
-<meta name="description" content="Cast fire and void powers with your bare hands. Webcam hand-tracking, real particle physics, no app install.">
+<title>Cast</title>
+<meta name="description" content="Cast fire and void powers with your bare hands. Webcam hand tracking, real particle physics, a black hole that bends your camera. No install.">
+<meta name="theme-color" content="#07060b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='26' fill='none' stroke='%23ff5a2b' stroke-width='6'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffc24d'/%3E%3C/svg%3E">
+<meta property="og:title" content="Cast">
+<meta property="og:description" content="Cast anime powers with your bare hands, right in your browser.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --bg:#08070c;
-    --bg2:#121019;
-    --panel:#15131e;
-    --ink:#f3efe6;
-    --ink-dim:#948fa3;
-    --line:#241f30;
-    --ember:#ff5a2b;
-    --ember-2:#ffb020;
-    --nyx:#8b5cf6;
-    --nyx-2:#c9a6ff;
-    --accent:var(--ember);
-    --accent2:var(--ember-2);
-    color-scheme: dark;
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=JetBrains+Mono:wght@400;600&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@900&text=%E7%82%8E%E8%99%9A%E7%81%AB%E7%90%83%E9%9E%AD%E7%88%86%E5%A3%81%E5%BC%95%E5%8A%9B%E6%96%A5%E7%89%B9%E7%95%B0%E7%82%B9%E7%A9%BA%E9%96%80&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
   }
-  *{box-sizing:border-box;}
-  html,body{
-    margin:0; padding:0; width:100%; height:100%;
-    background:var(--bg); color:var(--ink);
-    font-family:'Sora',system-ui,-apple-system,sans-serif;
-    overflow:hidden; overscroll-behavior:none;
-    -webkit-tap-highlight-color:transparent;
-  }
-  #app{position:fixed; inset:0; width:100%; height:100%;}
-  .screen{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;}
-  .hidden{display:none !important;}
-
-  /* ---------- Character select ---------- */
-  #screen-select{
-    background:
-      radial-gradient(60% 50% at 22% 15%, rgba(255,90,43,.16), transparent 60%),
-      radial-gradient(60% 50% at 82% 85%, rgba(139,92,246,.18), transparent 60%),
-      var(--bg);
-    padding:24px 16px;
-    padding-block:calc(24px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-bottom,0px));
-    overflow-y:auto;
-  }
-  .select-wrap{max-width:760px; width:100%; margin:0 auto; text-align:center;}
-  .eyebrow{
-    margin:0 0 6px; text-transform:uppercase; letter-spacing:.18em;
-    font-size:11px; color:var(--ink-dim); font-family:'JetBrains Mono',monospace;
-  }
-  .wordmark{
-    font-family:'Cinzel',serif; font-weight:700; margin:0;
-    font-size:clamp(42px,11vw,84px); line-height:1;
-    letter-spacing:.03em;
-    background:linear-gradient(120deg, var(--ember) 0%, var(--ember-2) 45%, var(--nyx) 100%);
-    -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-wrap:balance;
-  }
-  .tagline{color:var(--ink-dim); margin:10px 0 32px; font-size:15px;}
-  .char-grid{
-    display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:22px;
-  }
-  @media (max-width:560px){ .char-grid{grid-template-columns:1fr;} }
-  .char-card{
-    text-align:left; cursor:pointer; border-radius:16px;
-    background:linear-gradient(180deg, var(--panel), var(--bg2));
-    border:1px solid var(--line); padding:20px 18px;
-    display:flex; flex-direction:column; gap:10px;
-    font-family:inherit; color:var(--ink);
-    transition:border-color .15s ease, transform .15s ease, box-shadow .15s ease;
-    position:relative; overflow:hidden;
-  }
-  .char-card::before{
-    content:""; position:absolute; inset:0; pointer-events:none; opacity:0;
-    background:radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%);
-    transition:opacity .15s ease;
-  }
-  .char-card:hover::before, .char-card.selected::before{opacity:1;}
-  .char-card:hover{transform:translateY(-2px); border-color:color-mix(in srgb, var(--accent) 55%, var(--line));}
-  .char-card.selected{
-    border-color:var(--accent);
-    box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent), 0 8px 28px -12px color-mix(in srgb, var(--accent) 70%, transparent);
-  }
-  .char-name{
-    font-family:'Cinzel',serif; font-weight:700; font-size:26px;
-    color:var(--accent2); position:relative;
-  }
-  .char-sub{
-    font-size:12px; letter-spacing:.06em; text-transform:uppercase;
-    color:var(--ink-dim); font-family:'JetBrains Mono',monospace; position:relative;
-  }
-  .char-moves{margin:6px 0 0; padding:0 0 0 18px; font-size:13.5px; line-height:1.55; color:var(--ink); position:relative;}
-  .char-moves li{margin-bottom:2px;}
-  .char-moves li::marker{color:var(--accent);}
-
-  .btn-primary{
-    font-family:'Sora',sans-serif; font-weight:600; font-size:15px;
-    background:linear-gradient(120deg, var(--accent), var(--accent2));
-    color:#0a0810; border:none; border-radius:999px;
-    padding:14px 30px; cursor:pointer; letter-spacing:.01em;
-    transition:opacity .15s ease, transform .1s ease;
-  }
-  .btn-primary:disabled{opacity:.35; cursor:not-allowed;}
-  .btn-primary:not(:disabled):active{transform:scale(.97);}
-  .btn-ghost{
-    font-family:'Sora',sans-serif; font-weight:500; font-size:14px;
-    background:transparent; color:var(--ink-dim); border:1px solid var(--line);
-    border-radius:999px; padding:12px 22px; cursor:pointer;
-  }
-  .hint{margin-top:14px; font-size:12.5px; color:var(--ink-dim);}
-
-  /* ---------- Loading / error ---------- */
-  .loading-wrap{text-align:center; max-width:340px; padding:0 20px;}
-  .spinner{
-    width:40px; height:40px; margin:0 auto 18px;
-    border-radius:50%; border:3px solid var(--line); border-top-color:var(--accent);
-    animation:spin 0.9s linear infinite;
-  }
-  @keyframes spin{to{transform:rotate(360deg);}}
-  #loading-text, #error-text{color:var(--ink-dim); font-size:14px; line-height:1.5;}
-
-  /* ---------- Live screen ---------- */
-  #screen-live{padding:0;}
-  #cam-wrap{
-    position:absolute; inset:0; overflow:hidden; background:#000;
-    transform:scaleX(-1); /* mirror video + fx canvas together */
-  }
-  #cam{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
-  #fx{position:absolute; inset:0; width:100%; height:100%; display:block;}
-
-  #hud-top{
-    position:absolute; left:0; right:0; top:0; z-index:5;
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 16px; padding-top:calc(14px + env(safe-area-inset-top,0px));
-    background:linear-gradient(180deg, rgba(4,3,8,.75), transparent);
-    pointer-events:none;
-  }
-  #hud-top > *{pointer-events:auto;}
-  .hud-char{display:flex; flex-direction:column; line-height:1.1;}
-  #hud-char-name{font-family:'Cinzel',serif; font-weight:700; font-size:20px; color:var(--accent2);}
-  #hud-char-sub{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim);}
-  .hud-actions{display:flex; gap:8px;}
-  .icon-btn{
-    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.08em;
-    background:rgba(20,17,28,.7); backdrop-filter:blur(6px);
-    color:var(--ink); border:1px solid var(--line); border-radius:10px;
-    padding:9px 12px; cursor:pointer;
-  }
-  .icon-btn[aria-pressed="true"]{border-color:var(--accent); color:var(--accent2);}
-
-  #cheatsheet{
-    position:absolute; right:14px; top:64px; z-index:5;
-    background:rgba(14,12,20,.6); backdrop-filter:blur(6px);
-    border:1px solid var(--line); border-radius:12px;
-    padding:12px 14px; max-width:220px; pointer-events:none;
-  }
-  .cheat-title{margin:0 0 6px; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent2); font-family:'JetBrains Mono',monospace;}
-  #cheat-list{margin:0; padding:0 0 0 16px; font-size:12px; line-height:1.55; color:var(--ink-dim);}
-  @media (max-width:560px){ #cheatsheet{display:none;} }
-
-  #debug-readout{
-    position:absolute; left:14px; top:64px; z-index:5;
-    font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6;
-    background:rgba(14,12,20,.7); backdrop-filter:blur(6px);
-    border:1px solid var(--line); border-radius:10px; padding:10px 12px;
-    color:var(--ink-dim); white-space:pre; pointer-events:none;
-    font-variant-numeric:tabular-nums;
-  }
-
-  #hud-bottom{
-    position:absolute; left:0; right:0; bottom:0; z-index:5;
-    display:flex; flex-direction:column; align-items:center; gap:12px;
-    padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
-    background:linear-gradient(0deg, rgba(4,3,8,.8), transparent);
-  }
-  #watermark{
-    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.04em;
-    color:rgba(243,239,230,.8); text-align:center;
-  }
-  #cta-handle{color:var(--accent2); font-weight:500;}
-  .record-btn{
-    width:66px; height:66px; border-radius:50%; cursor:pointer;
-    background:rgba(20,17,28,.55); border:3px solid rgba(243,239,230,.85);
-    display:flex; align-items:center; justify-content:center;
-  }
-  .record-dot{
-    width:26px; height:26px; border-radius:8px; background:#e5384f;
-    transition:border-radius .18s ease, width .18s ease, height .18s ease, background .18s ease;
-  }
-  .record-btn[aria-pressed="true"] .record-dot{
-    border-radius:6px; width:22px; height:22px; background:#e5384f;
-    animation:pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes pulse{50%{opacity:.55;}}
-  #post-record{display:flex; gap:10px; align-items:center;}
-  #post-record a{text-decoration:none;}
-
-  a, button{-webkit-user-select:none; user-select:none;}
-</style>
+}
+</script>
 </head>
-<body>
-<div id="app">
+<body data-screen="select">
 
-  <section id="screen-select" class="screen">
-    <div class="select-wrap">
-      <p class="eyebrow">hand-tracked elemental combat</p>
-      <h1 class="wordmark">CAST</h1>
-      <p class="tagline">Pick your element. Your hands do the rest.</p>
+<section id="screen-select" class="screen">
+  <canvas id="select-bg" aria-hidden="true"></canvas>
+  <div class="select-wrap">
+    <p class="eyebrow">Hand-tracked elemental combat</p>
+    <h1 class="wordmark">CAST</h1>
+    <p class="tagline">Pick an element. Your webcam reads your hands, and every sign you make throws real physics.</p>
 
-      <div class="char-grid">
-        <button type="button" class="char-card" data-char="ember" style="--accent:var(--ember); --accent2:var(--ember-2);">
-          <span class="char-name">Ember</span>
-          <span class="char-sub">Fire · projectile &amp; combustion</span>
-          <ul class="char-moves">
-            <li><b>Palm Orb</b> — cup one hand, hold still to charge, thrust to throw</li>
-            <li><b>Flame Whip</b> — loose fist, swipe fast to trail fire</li>
-            <li><b>Nova Burst</b> — bring both fists together, then rip them apart</li>
-            <li><b>Wall of Flame</b> — spread both arms wide and open, hold</li>
-          </ul>
-        </button>
-        <button type="button" class="char-card" data-char="nyx" style="--accent:var(--nyx); --accent2:var(--nyx-2);">
-          <span class="char-name">Nyx</span>
-          <span class="char-sub">Void · attraction &amp; repulsion field</span>
-          <ul class="char-moves">
-            <li><b>Pull</b> — curl one hand into a loose fist, hold still</li>
-            <li><b>Push</b> — thrust an open palm forward, fast</li>
-            <li><b>Singularity</b> — bring both hands together, hold</li>
-            <li><b>Portal</b> — keep holding Singularity past 3 seconds</li>
-          </ul>
-        </button>
-      </div>
-
-      <button id="btn-start" class="btn-primary" disabled>Select a character</button>
-      <p class="hint">Needs camera access. Works best with both hands lit and in frame.</p>
-    </div>
-  </section>
-
-  <section id="screen-loading" class="screen hidden">
-    <div class="loading-wrap">
-      <div class="spinner"></div>
-      <p id="loading-text">Waking up the camera…</p>
-    </div>
-  </section>
-
-  <section id="screen-error" class="screen hidden">
-    <div class="loading-wrap">
-      <p id="error-text">Something went wrong.</p>
-      <button id="btn-retry" class="btn-primary" type="button">Try again</button>
-    </div>
-  </section>
-
-  <section id="screen-live" class="screen hidden">
-    <div id="cam-wrap">
-      <video id="cam" autoplay playsinline muted></video>
-      <canvas id="fx"></canvas>
-    </div>
-
-    <header id="hud-top">
-      <div class="hud-char">
-        <span id="hud-char-name">Ember</span>
-        <span id="hud-char-sub">Fire</span>
-      </div>
-      <div class="hud-actions">
-        <button id="btn-debug" class="icon-btn" type="button" aria-pressed="false">DEBUG</button>
-        <button id="btn-switch" class="icon-btn" type="button">SWAP</button>
-      </div>
-    </header>
-
-    <aside id="cheatsheet">
-      <p class="cheat-title" id="cheat-title">Ember moves</p>
-      <ol id="cheat-list"></ol>
-    </aside>
-
-    <div id="debug-readout" class="hidden"></div>
-
-    <footer id="hud-bottom">
-      <div id="watermark">⚡ CAST — more projects: <span id="cta-handle">github.com/KevinPratap</span></div>
-      <button id="btn-record" class="record-btn" type="button" aria-pressed="false" title="Record">
-        <span class="record-dot"></span>
+    <div class="char-grid">
+      <button type="button" class="char-card" data-char="ember" aria-pressed="false">
+        <span class="card-kanji" lang="ja" aria-hidden="true">炎</span>
+        <span class="char-name">Ember</span>
+        <span class="char-sub">Fire · projectiles &amp; combustion</span>
+        <ul class="char-moves">
+          <li><span class="mk" lang="ja">火球</span><span><b>Palm Orb.</b> Cup a hand to charge, flick to throw, or push it at the camera.</span></li>
+          <li><span class="mk" lang="ja">炎鞭</span><span><b>Flame Whip.</b> Swing a fist fast.</span></li>
+          <li><span class="mk" lang="ja">爆炎</span><span><b>Nova Burst.</b> Hands together, then rip them apart.</span></li>
+          <li><span class="mk" lang="ja">炎壁</span><span><b>Wall of Flame.</b> Both palms open wide and level.</span></li>
+        </ul>
       </button>
-      <div id="post-record" class="hidden">
-        <a id="btn-download" class="btn-primary" download="cast-clip.webm">Download clip</a>
-        <button id="btn-dismiss" class="btn-ghost" type="button">Close</button>
-      </div>
-    </footer>
-  </section>
+      <button type="button" class="char-card" data-char="nyx" aria-pressed="false">
+        <span class="card-kanji" lang="ja" aria-hidden="true">虚</span>
+        <span class="char-name">Nyx</span>
+        <span class="char-sub">Void · gravity &amp; repulsion</span>
+        <ul class="char-moves">
+          <li><span class="mk" lang="ja">引力</span><span><b>Pull.</b> Curl a hand half shut and hold still.</span></li>
+          <li><span class="mk" lang="ja">斥力</span><span><b>Push.</b> Shove an open palm, or thrust it at the camera.</span></li>
+          <li><span class="mk" lang="ja">特異点</span><span><b>Singularity.</b> Press both hands together and hold.</span></li>
+          <li><span class="mk" lang="ja">虚空門</span><span><b>Portal.</b> Keep holding for three seconds.</span></li>
+        </ul>
+      </button>
+    </div>
 
+    <button id="btn-start" class="btn-primary" type="button" disabled>Choose a character</button>
+    <p class="hint-text">Uses your camera. Nothing is uploaded; tracking runs on your device.</p>
+    <button id="btn-demo" class="btn-link" type="button">No camera? Watch the demo</button>
+  </div>
+</section>
+
+<section id="screen-loading" class="screen" hidden>
+  <div class="center-wrap">
+    <div class="sigil-loader" aria-hidden="true"><span></span><span></span><span></span><b lang="ja">炎</b></div>
+    <p id="loading-text" role="status">Waking up the camera…</p>
+  </div>
+</section>
+
+<section id="screen-error" class="screen" hidden>
+  <div class="center-wrap">
+    <p id="error-text" role="alert">Something went wrong.</p>
+    <div class="row">
+      <button id="btn-retry" class="btn-primary" type="button">Try again</button>
+      <button id="btn-demo-2" class="btn-ghost" type="button">Watch the demo</button>
+    </div>
+  </div>
+</section>
+
+<section id="screen-live" class="screen" hidden>
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="gl"></canvas>
+  <canvas id="overlay" aria-hidden="true"></canvas>
+
+  <header class="hud-top">
+    <div class="badge">
+      <span id="hud-kanji" lang="ja">炎</span>
+      <span class="badge-text"><span id="hud-name">Ember</span><span id="hud-sub">Fire</span></span>
+    </div>
+    <div class="hud-actions">
+      <button id="btn-moves" class="chip" type="button" aria-expanded="false" aria-controls="moves-panel">MOVES</button>
+      <button id="btn-swap" class="chip" type="button">SWAP</button>
+      <button id="btn-sound" class="chip" type="button" aria-pressed="true">SOUND ON</button>
+      <button id="btn-debug" class="chip" type="button" aria-pressed="false">DEBUG</button>
+    </div>
+  </header>
+
+  <div id="demo-badge" hidden>Demo · simulated hands</div>
+
+  <aside id="moves-panel" aria-label="Moves">
+    <div class="moves-head"><p class="moves-title">Moves</p><span id="moves-progress">0/4 found</span></div>
+    <ol id="moves-list"></ol>
+  </aside>
+
+  <pre id="debug-readout" hidden></pre>
+
+  <div id="hint" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 11.5v-7a1.5 1.5 0 0 1 3 0V12"/><path d="M14 11.5V6.5a1.5 1.5 0 0 1 3 0V14a6 6 0 0 1-6 6h-.7a5 5 0 0 1-3.9-1.9L4 14.8a1.6 1.6 0 0 1 2.4-2.1L8 14.2"/></svg>
+    Raise your hands into frame
+  </div>
+
+  <footer class="hud-bottom">
+    <div id="rec-pill" hidden><i></i><span id="rec-label">REC</span><span id="rec-time">0:00</span></div>
+    <button id="btn-record" type="button" aria-pressed="false" aria-label="Start recording"><span></span></button>
+    <div class="watermark">try it → <b>kevinpratap.github.io/cast</b></div>
+  </footer>
+</section>
+
+<div id="clip-modal" role="dialog" aria-modal="true" aria-labelledby="clip-title" hidden>
+  <div class="clip-card">
+    <h2 id="clip-title">Your clip</h2>
+    <video id="clip-video" controls playsinline loop muted></video>
+    <p id="clip-note"></p>
+    <div class="clip-actions">
+      <a id="btn-save" class="btn-primary" href="#" download="cast-clip.mp4">Save video</a>
+      <button id="btn-share" class="btn-ghost" type="button" hidden>Share</button>
+      <button id="btn-discard" class="btn-ghost" type="button">Back to casting</button>
+    </div>
+  </div>
 </div>
 
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+<div id="toast" role="status" hidden></div>
 
-/* =========================================================================
-   CONFIG — tune these after testing on your own camera / lighting.
-   Everything gesture-related lives here so you don't have to hunt through
-   the engine code to adjust sensitivity.
-   ========================================================================= */
-const CONFIG = {
-  // who to plug at the end of clips — swap for your own portfolio link/handle
-  CTA_TEXT: "github.com/KevinPratap",
-
-  maxHands: 2,
-  // hand-state smoothing (0..1, higher = snappier/less smooth)
-  smoothPos: 0.45,
-  smoothOpenness: 0.35,
-  smoothVel: 0.35,
-
-  // openness bands (0 = fist, 1 = fully spread)
-  fistMax: 0.24,        // below this = closed fist
-  cupMin: 0.30, cupMax: 0.66,  // cupped hand (orb charge / pull)
-  openMin: 0.74,         // above this = flat open palm
-
-  stillSpeed: 0.35,      // norm units/sec — below this hand counts as "held still"
-  throwSpeed: 1.15,      // sudden speed spike that reads as a throw/thrust
-  swipeSpeed: 0.95,      // sustained speed that reads as a swipe
-
-  chargeTime: 1.3,       // seconds to fully charge an orb
-  chargeDecay: 0.9,      // charge lost per second once the pose breaks
-
-  handsTouchDist: 0.13,  // normalized distance that counts as "hands together"
-  handsApartDelta: 0.20, // extra separation (on top of touch dist) that reads as "ripped apart"
-  handsSameHeight: 0.16, // max y-difference for a symmetric two-hand pose
-
-  portalHoldTime: 3.0,   // seconds holding Singularity before it becomes a Portal
-
-  pullRadius: 260,       // px, radius of Nyx's pull/push influence
-  ambientCount: 160,     // ambient void particles
-};
-
-/* =========================================================================
-   Small utilities
-   ========================================================================= */
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const lerp = (a, b, t) => a + (b - a) * t;
-const dist2 = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
-const rand = (a, b) => a + Math.random() * (b - a);
-
-function hexToRgb01(hex) {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-}
-
-const PALETTE = {
-  ember: { a: hexToRgb01('#ff5a2b'), b: hexToRgb01('#ffcf4d'), name: 'Ember', sub: 'Fire' },
-  nyx: { a: hexToRgb01('#8b5cf6'), b: hexToRgb01('#2a1a4d'), name: 'Nyx', sub: 'Void' },
-};
-
-/* =========================================================================
-   DOM refs
-   ========================================================================= */
-const screens = {
-  select: document.getElementById('screen-select'),
-  loading: document.getElementById('screen-loading'),
-  error: document.getElementById('screen-error'),
-  live: document.getElementById('screen-live'),
-};
-function showScreen(name) {
-  Object.values(screens).forEach(s => s.classList.add('hidden'));
-  screens[name].classList.remove('hidden');
-}
-
-const video = document.getElementById('cam');
-const fxCanvas = document.getElementById('fx');
-const loadingText = document.getElementById('loading-text');
-const errorText = document.getElementById('error-text');
-const btnStart = document.getElementById('btn-start');
-const btnRetry = document.getElementById('btn-retry');
-const btnDebug = document.getElementById('btn-debug');
-const btnSwitch = document.getElementById('btn-switch');
-const btnRecord = document.getElementById('btn-record');
-const btnDownload = document.getElementById('btn-download');
-const btnDismiss = document.getElementById('btn-dismiss');
-const postRecord = document.getElementById('post-record');
-const debugReadout = document.getElementById('debug-readout');
-const hudCharName = document.getElementById('hud-char-name');
-const hudCharSub = document.getElementById('hud-char-sub');
-const cheatTitle = document.getElementById('cheat-title');
-const cheatList = document.getElementById('cheat-list');
-const ctaHandle = document.getElementById('cta-handle');
-
-ctaHandle.textContent = CONFIG.CTA_TEXT;
-
-const MOVES = {
-  ember: ['Palm Orb — cup a hand, hold, thrust', 'Flame Whip — loose fist, swipe fast', 'Nova Burst — fists together, rip apart', 'Wall of Flame — both arms spread'],
-  nyx: ['Pull — curl a hand shut, hold', 'Push — thrust an open palm', 'Singularity — hands together, hold', 'Portal — hold past 3 seconds'],
-};
-
-let selectedChar = null;
-let debugMode = false;
-
-document.querySelectorAll('.char-card').forEach(card => {
-  card.addEventListener('click', () => {
-    document.querySelectorAll('.char-card').forEach(c => c.classList.remove('selected'));
-    card.classList.add('selected');
-    selectedChar = card.dataset.char;
-    btnStart.disabled = false;
-    btnStart.textContent = `Cast as ${PALETTE[selectedChar].name}`;
-    btnStart.style.setProperty('--accent', getComputedStyle(card).getPropertyValue('--accent'));
-    btnStart.style.setProperty('--accent2', getComputedStyle(card).getPropertyValue('--accent2'));
-  });
-});
-
-/* =========================================================================
-   Glow texture (shared by every particle system)
-   ========================================================================= */
-function makeGlowTexture() {
-  const size = 64;
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.35, 'rgba(255,255,255,0.75)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function makeRingTexture() {
-  const size = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  ctx.strokeStyle = 'rgba(255,255,255,1)';
-  ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2 - 8, 0, Math.PI * 2);
-  ctx.stroke();
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function makeParticleMaterial(texture) {
-  return new THREE.ShaderMaterial({
-    uniforms: { pointTexture: { value: texture } },
-    vertexShader: `
-      attribute float size;
-      attribute vec3 color;
-      varying vec3 vColor;
-      void main() {
-        vColor = color;
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size;
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D pointTexture;
-      varying vec3 vColor;
-      void main() {
-        vec4 tex = texture2D(pointTexture, gl_PointCoord);
-        if (tex.a < 0.02) discard;
-        gl_FragColor = vec4(vColor, 1.0) * tex;
-      }
-    `,
-    transparent: true,
-    depthWrite: false,
-    depthTest: false,
-    blending: THREE.AdditiveBlending,
-  });
-}
-
-/* =========================================================================
-   Generic GPU particle pool
-   ========================================================================= */
-class ParticleSystem {
-  constructor(scene, max, texture) {
-    this.max = max;
-    this.positions = new Float32Array(max * 3);
-    this.colors = new Float32Array(max * 3);
-    this.sizes = new Float32Array(max);
-    this.geo = new THREE.BufferGeometry();
-    this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    this.geo.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
-    this.geo.setAttribute('size', new THREE.BufferAttribute(this.sizes, 1));
-    this.mat = makeParticleMaterial(texture);
-    this.points = new THREE.Points(this.geo, this.mat);
-    this.points.frustumCulled = false;
-    scene.add(this.points);
-    this.pool = [];
-  }
-  spawn(p) {
-    if (this.pool.length >= this.max) this.pool.shift();
-    p.life = p.life ?? p.maxLife;
-    this.pool.push(p);
-    return p;
-  }
-  update(dt) {
-    for (let i = this.pool.length - 1; i >= 0; i--) {
-      const p = this.pool[i];
-      if (p.update) p.update(p, dt);
-      else {
-        p.vy = (p.vy ?? 0) + (p.gravity ?? 0) * dt;
-        p.x += (p.vx ?? 0) * dt;
-        p.y += (p.vy ?? 0) * dt;
-        if (p.drag) { p.vx *= (1 - p.drag * dt); p.vy *= (1 - p.drag * dt); }
-      }
-      p.life -= dt;
-      if (p.life <= 0) this.pool.splice(i, 1);
-    }
-    const n = this.pool.length;
-    for (let i = 0; i < n; i++) {
-      const p = this.pool[i];
-      const i3 = i * 3;
-      this.positions[i3] = p.x; this.positions[i3 + 1] = p.y; this.positions[i3 + 2] = p.z || 0;
-      const t = clamp(p.life / p.maxLife, 0, 1);
-      const fade = p.fadeFn ? p.fadeFn(t) : t;
-      this.colors[i3] = p.r * fade; this.colors[i3 + 1] = p.g * fade; this.colors[i3 + 2] = p.b * fade;
-      this.sizes[i] = p.size * (p.sizeFn ? p.sizeFn(t) : 1);
-    }
-    for (let i = n; i < this.max; i++) this.sizes[i] = 0;
-    this.geo.attributes.position.needsUpdate = true;
-    this.geo.attributes.color.needsUpdate = true;
-    this.geo.attributes.size.needsUpdate = true;
-  }
-  clear() { this.pool.length = 0; }
-  setVisible(v) { this.points.visible = v; }
-  dispose(scene) { scene.remove(this.points); this.geo.dispose(); this.mat.dispose(); }
-}
-
-/* =========================================================================
-   Hand tracking — landmark math + per-hand smoothed state
-   ========================================================================= */
-const L = { WRIST: 0, THUMB_TIP: 4, INDEX_MCP: 5, INDEX_TIP: 8, MIDDLE_MCP: 9, MIDDLE_TIP: 12, RING_MCP: 13, RING_TIP: 16, PINKY_MCP: 17, PINKY_TIP: 20 };
-const HAND_CONNECTIONS = [
-  [0,1],[1,2],[2,3],[3,4],
-  [0,5],[5,6],[6,7],[7,8],
-  [5,9],[9,10],[10,11],[11,12],
-  [9,13],[13,14],[14,15],[15,16],
-  [13,17],[17,18],[18,19],[19,20],
-  [0,17],
-];
-
-function handCenterOf(lm) {
-  const idxs = [0, 5, 9, 13, 17];
-  let x = 0, y = 0;
-  idxs.forEach(i => { x += lm[i].x; y += lm[i].y; });
-  return { x: x / idxs.length, y: y / idxs.length };
-}
-function opennessOf(lm, center) {
-  const tips = [4, 8, 12, 16, 20];
-  const bases = [2, 5, 9, 13, 17];
-  let tipD = 0, baseD = 0;
-  tips.forEach(t => tipD += dist2(lm[t].x, lm[t].y, center.x, center.y));
-  bases.forEach(b => baseD += dist2(lm[b].x, lm[b].y, center.x, center.y));
-  tipD /= 5; baseD /= 5;
-  const ratio = tipD / (baseD + 1e-6);
-  return clamp((ratio - 0.95) / 1.1, 0, 1);
-}
-
-class HandState {
-  constructor(label) {
-    this.label = label;
-    this.present = false;
-    this.raw = null;
-    this.cx = 0.5; this.cy = 0.5;
-    this.vx = 0; this.vy = 0;
-    this.speed = 0;
-    this.openness = 0.5;
-    this._hadPrev = false;
-  }
-  update(lm, dt) {
-    this.raw = lm;
-    this.present = true;
-    const c = handCenterOf(lm);
-    const o = opennessOf(lm, c);
-    if (!this._hadPrev) {
-      this.cx = c.x; this.cy = c.y; this.openness = o; this.vx = 0; this.vy = 0;
-      this._hadPrev = true;
-    } else {
-      const px = this.cx, py = this.cy;
-      this.cx = lerp(this.cx, c.x, CONFIG.smoothPos);
-      this.cy = lerp(this.cy, c.y, CONFIG.smoothPos);
-      this.openness = lerp(this.openness, o, CONFIG.smoothOpenness);
-      const ivx = dt > 0 ? (this.cx - px) / dt : 0;
-      const ivy = dt > 0 ? (this.cy - py) / dt : 0;
-      this.vx = lerp(this.vx, ivx, CONFIG.smoothVel);
-      this.vy = lerp(this.vy, ivy, CONFIG.smoothVel);
-      this.speed = Math.hypot(this.vx, this.vy);
-    }
-  }
-  markAbsent() {
-    this.present = false;
-    this._hadPrev = false;
-    this.speed = 0;
-  }
-  fingertip() {
-    if (!this.raw) return { x: this.cx, y: this.cy };
-    return { x: this.raw[L.INDEX_TIP].x, y: this.raw[L.INDEX_TIP].y };
-  }
-}
-
-/* =========================================================================
-   Screen-space projection (handles object-fit:cover math for the video)
-   ========================================================================= */
-const Projector = {
-  vw: 640, vh: 480, cw: window.innerWidth, ch: window.innerHeight,
-  scale: 1, offX: 0, offY: 0,
-  recompute() {
-    this.cw = window.innerWidth; this.ch = window.innerHeight;
-    if (!this.vw || !this.vh) return;
-    this.scale = Math.max(this.cw / this.vw, this.ch / this.vh);
-    this.offX = (this.cw - this.vw * this.scale) / 2;
-    this.offY = (this.ch - this.vh * this.scale) / 2;
-  },
-  toScreen(nx, ny) {
-    return {
-      x: nx * this.vw * this.scale + this.offX,
-      y: ny * this.vh * this.scale + this.offY,
-    };
-  },
-  toWorld(nx, ny) {
-    const s = this.toScreen(nx, ny);
-    return { x: s.x, y: this.ch - s.y };
-  },
-};
-
-/* =========================================================================
-   Three.js scene
-   ========================================================================= */
-let renderer, scene, camera;
-function initThree() {
-  renderer = new THREE.WebGLRenderer({ canvas: fxCanvas, alpha: true, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  scene = new THREE.Scene();
-  camera = new THREE.OrthographicCamera(0, window.innerWidth, window.innerHeight, 0, -1000, 1000);
-  resizeThree();
-  window.addEventListener('resize', resizeThree);
-}
-function resizeThree() {
-  const w = window.innerWidth, h = window.innerHeight;
-  renderer.setSize(w, h, false);
-  camera.left = 0; camera.right = w; camera.top = h; camera.bottom = 0;
-  camera.updateProjectionMatrix();
-  Projector.recompute();
-}
-
-/* =========================================================================
-   Debug skeleton overlay
-   ========================================================================= */
-let debugDots, debugLines;
-function initDebugLayer() {
-  const dotGeo = new THREE.BufferGeometry();
-  const maxDots = 21 * 2;
-  dotGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxDots * 3), 3));
-  const dotMat = new THREE.PointsMaterial({ color: 0xffffff, size: 6 });
-  debugDots = new THREE.Points(dotGeo, dotMat);
-  debugDots.visible = false;
-  scene.add(debugDots);
-
-  const lineGeo = new THREE.BufferGeometry();
-  const maxLines = HAND_CONNECTIONS.length * 2 * 2;
-  lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxLines * 3), 3));
-  const lineMat = new THREE.LineBasicMaterial({ color: 0x55ffaa, transparent: true, opacity: 0.7 });
-  debugLines = new THREE.LineSegments(lineGeo, lineMat);
-  debugLines.visible = false;
-  scene.add(debugLines);
-}
-function updateDebugLayer(hands) {
-  debugDots.visible = debugMode;
-  debugLines.visible = debugMode;
-  if (!debugMode) return;
-  const dotPos = debugDots.geometry.attributes.position.array;
-  const linePos = debugLines.geometry.attributes.position.array;
-  let di = 0, li = 0;
-  hands.forEach(h => {
-    if (!h.present || !h.raw) return;
-    const pts = h.raw.map(p => Projector.toWorld(p.x, p.y));
-    pts.forEach(p => { dotPos[di++] = p.x; dotPos[di++] = p.y; dotPos[di++] = 5; });
-    HAND_CONNECTIONS.forEach(([a, b]) => {
-      linePos[li++] = pts[a].x; linePos[li++] = pts[a].y; linePos[li++] = 5;
-      linePos[li++] = pts[b].x; linePos[li++] = pts[b].y; linePos[li++] = 5;
-    });
-  });
-  for (; di < dotPos.length; di++) dotPos[di] = 0;
-  for (; li < linePos.length; li++) linePos[li] = 0;
-  debugDots.geometry.attributes.position.needsUpdate = true;
-  debugLines.geometry.attributes.position.needsUpdate = true;
-}
-
-/* =========================================================================
-   Ember — projectile / combustion physics
-   ========================================================================= */
-class EmberEngine {
-  constructor(scene) {
-    this.name = 'ember';
-    this.tex = makeGlowTexture();
-    this.ps = new ParticleSystem(scene, 420, this.tex);
-    this.orbCharge = { L: 0, R: 0 };
-    this.wasCharging = { L: false, R: false };
-    this.wallActive = false;
-    this.novaHist = [];
-  }
-  reset() { this.ps.clear(); this.orbCharge = { L: 0, R: 0 }; this.wallActive = false; }
-  dispose(scene) { this.ps.dispose(scene); }
-
-  spawnOrbParticles(cx, cy, charge) {
-    const world = Projector.toWorld(cx, cy);
-    const n = 2 + Math.floor(charge * 3);
-    for (let i = 0; i < n; i++) {
-      const a = rand(0, Math.PI * 2);
-      const r = rand(4, 10 + charge * 26);
-      const mix = Math.random();
-      this.ps.spawn({
-        x: world.x + Math.cos(a) * r, y: world.y + Math.sin(a) * r, z: rand(-4, 4),
-        vx: rand(-6, 6), vy: rand(-6, 6), gravity: 0, drag: 1.2,
-        r: lerp(1.0, 1.0, mix), g: lerp(0.35, 0.85, mix), b: lerp(0.08, 0.25, mix),
-        size: rand(10, 22) * (0.5 + charge * 0.7),
-        maxLife: rand(0.25, 0.5),
-        fadeFn: t => t * t,
-      });
-    }
-  }
-  throwFireball(cx, cy, vx, vy) {
-    const world = Projector.toWorld(cx, cy);
-    const speed = 620;
-    const anchor = { x: world.x, y: world.y, vx: vx * speed, vy: -vy * speed };
-    const life = 1.1;
-    const puff = (p, dt) => {
-      anchor.vy -= 380 * dt; // gravity arc
-      anchor.x += anchor.vx * dt; anchor.y += anchor.vy * dt;
-      p.x = anchor.x + rand(-6, 6); p.y = anchor.y + rand(-6, 6);
-    };
-    for (let i = 0; i < 26; i++) {
-      this.ps.spawn({
-        x: world.x, y: world.y, z: 0,
-        r: 1, g: rand(0.4, 0.8), b: 0.15,
-        size: rand(14, 26), maxLife: life * rand(0.5, 1),
-        update: puff,
-        fadeFn: t => Math.pow(t, 0.6),
-      });
-    }
-  }
-  spawnWhip(cx, cy) {
-    const world = Projector.toWorld(cx, cy);
-    this.ps.spawn({
-      x: world.x + rand(-8, 8), y: world.y + rand(-8, 8), z: rand(-3, 3),
-      vx: rand(-30, 30), vy: rand(-30, 30), gravity: -20, drag: 2.5,
-      r: 1, g: rand(0.3, 0.7), b: 0.1,
-      size: rand(12, 24), maxLife: rand(0.3, 0.55),
-      fadeFn: t => t,
-    });
-  }
-  spawnNova(mx, my) {
-    const world = Projector.toWorld(mx, my);
-    for (let i = 0; i < 90; i++) {
-      const a = rand(0, Math.PI * 2);
-      const spd = rand(180, 520);
-      this.ps.spawn({
-        x: world.x, y: world.y, z: rand(-6, 6),
-        vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, gravity: -140, drag: 1.6,
-        r: 1, g: rand(0.3, 0.8), b: rand(0.05, 0.25),
-        size: rand(10, 24), maxLife: rand(0.4, 0.85),
-        fadeFn: t => Math.pow(t, 0.7),
-      });
-    }
-  }
-  spawnWallSegment(x1, y1, x2, y2) {
-    const wA = Projector.toWorld(x1, y1), wB = Projector.toWorld(x2, y2);
-    const t = Math.random();
-    const x = lerp(wA.x, wB.x, t), y = lerp(wA.y, wB.y, t) + rand(-14, 14);
-    this.ps.spawn({
-      x, y, z: rand(-4, 4),
-      vx: rand(-8, 8), vy: rand(20, 70), gravity: -60, drag: 2,
-      r: 1, g: rand(0.35, 0.75), b: 0.12,
-      size: rand(14, 26), maxLife: rand(0.3, 0.55),
-      fadeFn: t => t,
-    });
-  }
-
-  update(dt, hands, now) {
-    const hL = hands.L, hR = hands.R;
-    [['L', hL], ['R', hR]].forEach(([side, h]) => {
-      if (!h.present) { this.orbCharge[side] = Math.max(0, this.orbCharge[side] - CONFIG.chargeDecay * dt); return; }
-      const cupped = h.openness > CONFIG.cupMin && h.openness < CONFIG.cupMax;
-      const still = h.speed < CONFIG.stillSpeed;
-      const charging = cupped && still;
-
-      if (charging) {
-        this.orbCharge[side] = clamp(this.orbCharge[side] + dt / CONFIG.chargeTime, 0, 1);
-        this.spawnOrbParticles(h.cx, h.cy, this.orbCharge[side]);
-      } else if (this.orbCharge[side] > 0.2 && h.speed > CONFIG.throwSpeed) {
-        const mag = Math.hypot(h.vx, h.vy) || 1;
-        this.throwFireball(h.cx, h.cy, h.vx / mag, h.vy / mag);
-        this.orbCharge[side] = 0;
-      } else {
-        this.orbCharge[side] = Math.max(0, this.orbCharge[side] - CONFIG.chargeDecay * dt);
-      }
-
-      const fistLike = h.openness < CONFIG.fistMax + 0.08;
-      if (fistLike && h.speed > CONFIG.swipeSpeed) {
-        this.spawnWhip(h.cx, h.cy);
-      }
-    });
-
-    // Nova burst — hands together then ripped apart
-    if (hL.present && hR.present) {
-      const d = dist2(hL.cx, hL.cy, hR.cx, hR.cy);
-      this.novaHist.push({ t: now, d });
-      while (this.novaHist.length && now - this.novaHist[0].t > 0.35) this.novaHist.shift();
-      const wasTogether = this.novaHist.some(e => e.d < CONFIG.handsTouchDist);
-      if (wasTogether && d > CONFIG.handsTouchDist + CONFIG.handsApartDelta) {
-        this.spawnNova((hL.cx + hR.cx) / 2, (hL.cy + hR.cy) / 2);
-        this.novaHist.length = 0;
-      }
-
-      // Wall of flame — both hands open, level, still
-      const bothOpen = hL.openness > CONFIG.openMin && hR.openness > CONFIG.openMin;
-      const level = Math.abs(hL.cy - hR.cy) < CONFIG.handsSameHeight;
-      const bothStill = hL.speed < CONFIG.stillSpeed * 1.4 && hR.speed < CONFIG.stillSpeed * 1.4;
-      this.wallActive = bothOpen && level && bothStill;
-      if (this.wallActive) {
-        for (let i = 0; i < 3; i++) this.spawnWallSegment(hL.cx, hL.cy, hR.cx, hR.cy);
-      }
-    } else {
-      this.wallActive = false;
-    }
-
-    this.ps.update(dt);
-  }
-
-  gestureLabel(hands) {
-    const bits = [];
-    if (this.orbCharge.L > 0.05) bits.push(`orbL ${(this.orbCharge.L*100)|0}%`);
-    if (this.orbCharge.R > 0.05) bits.push(`orbR ${(this.orbCharge.R*100)|0}%`);
-    if (this.wallActive) bits.push('wall');
-    return bits.join(' | ') || '-';
-  }
-}
-
-/* =========================================================================
-   Nyx — attraction / repulsion force-field physics
-   ========================================================================= */
-class NyxEngine {
-  constructor(scene) {
-    this.name = 'nyx';
-    this.tex = makeGlowTexture();
-    this.ringTex = makeRingTexture();
-    this.ps = new ParticleSystem(scene, CONFIG.ambientCount + 220, this.tex);
-    this.ambient = [];
-    this.holdTimer = 0;
-    this.portalActive = false;
-    for (let i = 0; i < CONFIG.ambientCount; i++) this.spawnAmbient();
-  }
-  reset() {
-    this.ps.clear(); this.ambient.length = 0; this.holdTimer = 0; this.portalActive = false;
-    for (let i = 0; i < CONFIG.ambientCount; i++) this.spawnAmbient();
-  }
-  dispose(scene) { this.ps.dispose(scene); }
-
-  spawnAmbient() {
-    const p = {
-      x: rand(0, Projector.cw), y: rand(0, Projector.ch), z: rand(-10, 10),
-      vx: rand(-8, 8), vy: rand(-8, 8),
-      r: 0.55, g: 0.4, b: 0.95,
-      size: rand(4, 8), maxLife: 1e9, life: 1e9,
-      fadeFn: () => 0.55,
-    };
-    p.update = (p, dt) => {
-      p.x += p.vx * dt; p.y += p.vy * dt;
-      if (p.x < -20) p.x = Projector.cw + 20; if (p.x > Projector.cw + 20) p.x = -20;
-      if (p.y < -20) p.y = Projector.ch + 20; if (p.y > Projector.ch + 20) p.y = -20;
-    };
-    this.ambient.push(p);
-    this.ps.spawn(p);
-  }
-
-  attract(px, py, radiusPx, strength, dt) {
-    this.ambient.forEach(p => {
-      const d = dist2(p.x, p.y, px, py);
-      if (d < radiusPx && d > 1) {
-        const f = (1 - d / radiusPx) * strength;
-        p.vx += ((px - p.x) / d) * f * dt;
-        p.vy += ((py - p.y) / d) * f * dt;
-      }
-      p.vx *= 0.98; p.vy *= 0.98;
-    });
-  }
-  repel(px, py, radiusPx, strength) {
-    this.ambient.forEach(p => {
-      const d = dist2(p.x, p.y, px, py);
-      if (d < radiusPx && d > 1) {
-        const f = (1 - d / radiusPx) * strength;
-        p.vx -= ((px - p.x) / d) * f;
-        p.vy -= ((py - p.y) / d) * f;
-      }
-    });
-  }
-  spawnPushRing(px, py) {
-    for (let i = 0; i < 40; i++) {
-      const a = (i / 40) * Math.PI * 2;
-      this.ps.spawn({
-        x: px, y: py, z: 2,
-        vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, drag: 1.8,
-        r: 0.65, g: 0.45, b: 1.0,
-        size: 10, maxLife: 0.45, fadeFn: t => t,
-      });
-    }
-  }
-  spawnPullStreak(px, py, fromX, fromY) {
-    this.ps.spawn({
-      x: fromX, y: fromY, z: 1,
-      vx: (px - fromX) * 3, vy: (py - fromY) * 3, drag: 0,
-      r: 0.7, g: 0.55, b: 1.0,
-      size: rand(6, 12), maxLife: 0.3, fadeFn: t => t,
-    });
-  }
-  spawnPortalPop(px, py) {
-    for (let i = 0; i < 60; i++) {
-      const a = rand(0, Math.PI * 2);
-      const spd = rand(120, 380);
-      this.ps.spawn({
-        x: px, y: py, z: rand(-4, 4),
-        vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, drag: 1.4,
-        r: 0.6, g: 0.4, b: 1.0,
-        size: rand(8, 18), maxLife: rand(0.4, 0.7), fadeFn: t => t,
-      });
-    }
-  }
-
-  update(dt, hands, now) {
-    const hL = hands.L, hR = hands.R;
-
-    [hL, hR].forEach(h => {
-      if (!h.present) return;
-      const w = Projector.toWorld(h.cx, h.cy);
-      const curled = h.openness < CONFIG.cupMax - 0.04 && h.openness > 0.05;
-      const still = h.speed < CONFIG.stillSpeed;
-      if (curled && still) {
-        this.attract(w.x, w.y, CONFIG.pullRadius, 260, dt);
-        if (Math.random() < 0.5) {
-          const a = rand(0, Math.PI * 2);
-          this.spawnPullStreak(w.x, w.y, w.x + Math.cos(a) * CONFIG.pullRadius * 0.8, w.y + Math.sin(a) * CONFIG.pullRadius * 0.8);
-        }
-      }
-      const openPalm = h.openness > CONFIG.openMin;
-      if (openPalm && h.speed > CONFIG.throwSpeed) {
-        this.repel(w.x, w.y, CONFIG.pullRadius * 1.1, 340);
-        this.spawnPushRing(w.x, w.y);
-      }
-    });
-
-    // Singularity / Portal
-    if (hL.present && hR.present) {
-      const d = dist2(hL.cx, hL.cy, hR.cx, hR.cy);
-      const together = d < CONFIG.handsTouchDist;
-      const bothStill = hL.speed < CONFIG.stillSpeed * 1.6 && hR.speed < CONFIG.stillSpeed * 1.6;
-      if (together && bothStill) {
-        this.holdTimer += dt;
-        const mid = Projector.toWorld((hL.cx + hR.cx) / 2, (hL.cy + hR.cy) / 2);
-        if (this.holdTimer < CONFIG.portalHoldTime) {
-          this.attract(mid.x, mid.y, CONFIG.pullRadius * 2.2, 420 * (this.holdTimer / CONFIG.portalHoldTime + 0.2), dt);
-          for (let i = 0; i < 3; i++) {
-            const a = rand(0, Math.PI * 2);
-            const r = rand(30, 60);
-            this.ps.spawn({
-              x: mid.x + Math.cos(a) * r, y: mid.y + Math.sin(a) * r, z: 3,
-              vx: -Math.cos(a) * 60, vy: -Math.sin(a) * 60, drag: 0.5,
-              r: 0.55, g: 0.35, b: 0.95, size: rand(6, 14), maxLife: 0.35, fadeFn: t => t,
-            });
-          }
-        } else if (!this.portalActive) {
-          this.portalActive = true;
-          this.spawnPortalPop(mid.x, mid.y);
-        }
-        if (this.portalActive) {
-          const ringR = 90 + Math.sin(now * 2) * 8;
-          for (let i = 0; i < 4; i++) {
-            const a = rand(0, Math.PI * 2);
-            this.ps.spawn({
-              x: mid.x + Math.cos(a) * ringR, y: mid.y + Math.sin(a) * ringR, z: 4,
-              vx: -Math.sin(a) * 140, vy: Math.cos(a) * 140, drag: 0.2,
-              r: 0.75, g: 0.55, b: 1.0, size: rand(8, 16), maxLife: 0.4, fadeFn: t => t,
-            });
-          }
-        }
-      } else {
-        if (this.holdTimer > 0.15) {
-          const mid = Projector.toWorld((hL.cx + hR.cx) / 2, (hL.cy + hR.cy) / 2);
-          this.spawnPortalPop(mid.x, mid.y);
-          this.repel(mid.x, mid.y, CONFIG.pullRadius * 1.5, 260);
-        }
-        this.holdTimer = 0; this.portalActive = false;
-      }
-    } else {
-      this.holdTimer = 0; this.portalActive = false;
-    }
-
-    this.ps.update(dt);
-  }
-
-  gestureLabel() {
-    if (this.portalActive) return 'portal';
-    if (this.holdTimer > 0.1) return `singularity ${this.holdTimer.toFixed(1)}s`;
-    return '-';
-  }
-}
-
-/* =========================================================================
-   App state / wiring
-   ========================================================================= */
-const hands = { L: new HandState('L'), R: new HandState('R') };
-let engines = {};
-let activeEngine = null;
-let handLandmarker = null;
-let rafId = null;
-let lastFrameTime = 0;
-
-async function initEngines() {
-  engines.ember = new EmberEngine(scene);
-  engines.nyx = new NyxEngine(scene);
-  Object.values(engines).forEach(e => e.ps.setVisible(false));
-}
-function setActiveChar(name) {
-  selectedChar = name;
-  if (activeEngine) activeEngine.ps.setVisible(false);
-  activeEngine = engines[name];
-  activeEngine.reset();
-  activeEngine.ps.setVisible(true);
-  const pal = PALETTE[name];
-  hudCharName.textContent = pal.name;
-  hudCharSub.textContent = pal.sub;
-  cheatTitle.textContent = `${pal.name} moves`;
-  cheatList.innerHTML = '';
-  MOVES[name].forEach(m => { const li = document.createElement('li'); li.textContent = m; cheatList.appendChild(li); });
-}
-
-async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-    audio: false,
-  });
-  video.srcObject = stream;
-  await new Promise(res => {
-    video.onloadedmetadata = () => {
-      Projector.vw = video.videoWidth; Projector.vh = video.videoHeight;
-      Projector.recompute();
-      res();
-    };
-  });
-  await video.play();
-}
-
-async function setupHandLandmarker() {
-  const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
-  );
-  handLandmarker = await HandLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-      delegate: 'GPU',
-    },
-    runningMode: 'VIDEO',
-    numHands: CONFIG.maxHands,
-  });
-}
-
-function processResults(results, dt, now) {
-  const seen = { L: false, R: false };
-  if (results.landmarks && results.landmarks.length) {
-    results.landmarks.forEach((lm, i) => {
-      const handedness = results.handednesses?.[i]?.[0]?.categoryName || (i === 0 ? 'Left' : 'Right');
-      const key = handedness === 'Left' ? 'L' : 'R';
-      hands[key].update(lm, dt);
-      seen[key] = true;
-    });
-  }
-  if (!seen.L) hands.L.markAbsent();
-  if (!seen.R) hands.R.markAbsent();
-
-  if (activeEngine) activeEngine.update(dt, hands, now);
-  updateDebugLayer([hands.L, hands.R]);
-
-  if (debugMode) {
-    const fmt = h => h.present
-      ? `open ${h.openness.toFixed(2)}  spd ${h.speed.toFixed(2)}  xy ${h.cx.toFixed(2)},${h.cy.toFixed(2)}`
-      : '(not seen)';
-    debugReadout.textContent =
-      `L  ${fmt(hands.L)}\n` +
-      `R  ${fmt(hands.R)}\n` +
-      `gesture  ${activeEngine ? activeEngine.gestureLabel(hands) : '-'}`;
-  }
-}
-
-function predictLoop(t) {
-  rafId = requestAnimationFrame(predictLoop);
-  if (video.readyState < 2) return;
-  const now = performance.now();
-  const dt = lastFrameTime ? Math.min((now - lastFrameTime) / 1000, 0.1) : 1 / 60;
-  lastFrameTime = now;
-  if (handLandmarker) {
-    const results = handLandmarker.detectForVideo(video, now);
-    processResults(results, dt, now / 1000);
-  }
-  renderer.render(scene, camera);
-  if (recorder.active) compositeFrame();
-}
-
-/* =========================================================================
-   Recording
-   ========================================================================= */
-const recorder = { active: false, mr: null, chunks: [], canvas: null, ctx: null };
-
-function pickMime() {
-  const cands = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-  for (const c of cands) if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
-  return '';
-}
-function compositeFrame() {
-  const c = recorder.canvas, ctx = recorder.ctx;
-  if (!c) return;
-  ctx.save();
-  ctx.scale(-1, 1);
-  ctx.drawImage(video, -c.width, 0, c.width, c.height);
-  ctx.restore();
-  ctx.save();
-  ctx.scale(-1, 1);
-  ctx.drawImage(fxCanvas, -c.width, 0, c.width, c.height);
-  ctx.restore();
-  // burned-in CTA watermark
-  const barH = Math.round(c.height * 0.045);
-  ctx.fillStyle = 'rgba(4,3,8,0.55)';
-  ctx.fillRect(0, c.height - barH, c.width, barH);
-  ctx.fillStyle = 'rgba(243,239,230,0.92)';
-  const fontSize = Math.max(14, Math.round(c.height * 0.022));
-  ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-  ctx.fillText(`⚡ CAST — more projects: ${CONFIG.CTA_TEXT}`, c.width / 2, c.height - barH / 2);
-}
-function startRecording() {
-  if (!window.MediaRecorder) { alert('Recording is not supported in this browser. Try Chrome.'); return; }
-  recorder.canvas = document.createElement('canvas');
-  recorder.canvas.width = window.innerWidth;
-  recorder.canvas.height = window.innerHeight;
-  recorder.ctx = recorder.canvas.getContext('2d');
-  const stream = recorder.canvas.captureStream(30);
-  const mime = pickMime();
-  recorder.mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-  recorder.chunks = [];
-  recorder.mr.ondataavailable = e => { if (e.data.size > 0) recorder.chunks.push(e.data); };
-  recorder.mr.onstop = () => {
-    const blob = new Blob(recorder.chunks, { type: recorder.mr.mimeType || 'video/webm' });
-    const url = URL.createObjectURL(blob);
-    btnDownload.href = url;
-    postRecord.classList.remove('hidden');
+<script>
+  // Shows a readable message if the app's scripts can't load at all.
+  window.__castFail = function () {
+    var t = document.getElementById('toast');
+    t.textContent = 'Cast could not load. Check your connection and refresh.';
+    t.hidden = false;
   };
-  recorder.mr.start();
-  recorder.active = true;
-  btnRecord.setAttribute('aria-pressed', 'true');
-  postRecord.classList.add('hidden');
-}
-function stopRecording() {
-  recorder.active = false;
-  btnRecord.setAttribute('aria-pressed', 'false');
-  if (recorder.mr && recorder.mr.state !== 'inactive') recorder.mr.stop();
-}
-btnRecord.addEventListener('click', () => {
-  if (recorder.active) stopRecording(); else startRecording();
-});
-btnDismiss.addEventListener('click', () => {
-  postRecord.classList.add('hidden');
-  if (btnDownload.href) URL.revokeObjectURL(btnDownload.href);
-});
-
-/* =========================================================================
-   Flow control
-   ========================================================================= */
-let booted = false;
-async function boot() {
-  showScreen('loading');
-  loadingText.textContent = 'Asking for camera access…';
-  try {
-    await setupCamera();
-  } catch (err) {
-    showScreen('error');
-    errorText.textContent = err && err.name === 'NotAllowedError'
-      ? 'Camera access was blocked. Allow the camera for this page and try again.'
-      : 'Could not reach your camera. Check that no other app is using it and try again.';
-    return;
-  }
-
-  loadingText.textContent = 'Loading hand tracking…';
-  try {
-    if (!booted) {
-      initThree();
-      initDebugLayer();
-      await initEngines();
-      booted = true;
-    }
-    if (!handLandmarker) await setupHandLandmarker();
-  } catch (err) {
-    console.error(err);
-    showScreen('error');
-    errorText.textContent = 'Hand tracking failed to load. Check your connection and try again.';
-    return;
-  }
-
-  setActiveChar(selectedChar);
-  showScreen('live');
-  lastFrameTime = 0;
-  if (!rafId) rafId = requestAnimationFrame(predictLoop);
-}
-
-btnStart.addEventListener('click', () => { if (selectedChar) boot(); });
-btnRetry.addEventListener('click', () => { if (selectedChar) boot(); else showScreen('select'); });
-btnSwitch.addEventListener('click', () => {
-  stopRecording();
-  postRecord.classList.add('hidden');
-  document.querySelectorAll('.char-card').forEach(c => c.classList.toggle('selected', c.dataset.char === selectedChar));
-  showScreen('select');
-});
-btnDebug.addEventListener('click', () => {
-  debugMode = !debugMode;
-  btnDebug.setAttribute('aria-pressed', String(debugMode));
-  debugReadout.classList.toggle('hidden', !debugMode);
-});
-
-window.addEventListener('resize', () => { Projector.recompute(); });
 </script>
+<script type="module" src="js/main.js" onerror="window.__castFail()"></script>
 </body>
 </html>
