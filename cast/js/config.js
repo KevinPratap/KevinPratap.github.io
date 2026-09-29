@@ -123,7 +123,57 @@ export const CHARACTERS = {
       { id: 'step', kanji: '瞬歩', name: 'Instant Step', how: 'Hold up two fingers, still, for a moment.' },
     ],
   },
+  kage: {
+    name: 'Kage',
+    kanji: '影',
+    element: 'Shadow',
+    a: [0.12, 0.92, 0.6],
+    b: [0.8, 1.0, 0.92],
+    css: ['#1fe89a', '#c8ffe9'],
+    grade: [0.84, 1.03, 0.94],
+    moves: [
+      { id: 'clones', kanji: '影分身', name: 'Shadow Clones', how: 'Signs: two fingers, fist, then clap your hands together.' },
+      { id: 'smoke', kanji: '煙遁', name: 'Smoke Vanish', how: 'Signs: open palm, fist, then point a finger.' },
+      { id: 'kunai', kanji: '苦無', name: 'Kunai Storm', how: 'Signs: point, two fingers, then open palm.' },
+      { id: 'bind', kanji: '影縛', name: 'Shadow Binding', how: 'Four signs: fist, point, two fingers, then clap.' },
+      { id: 'eclipse', kanji: '影蝕', name: 'Grand Eclipse', how: 'Five signs: fist, two fingers, point, open palm, then clap.' },
+    ],
+  },
+  mystral: {
+    name: 'Mystral',
+    kanji: '魔',
+    element: 'Arcane',
+    a: [0.95, 0.3, 0.85],
+    b: [1.0, 0.86, 0.97],
+    css: ['#f24fd8', '#ffd9f7'],
+    grade: [1.02, 0.9, 1.06],
+    moves: [
+      { id: 'shield', kanji: '護法陣', name: 'Mandala Shield', how: 'Hold an open palm still. Thrust it forward to burst the shield.' },
+      { id: 'portal', kanji: '転移門', name: 'Portal Ring', how: 'Point a finger and draw a full circle in the air.' },
+      { id: 'mirror', kanji: '鏡像界', name: 'Mirror Dimension', how: 'Two fingers up on both hands, held still.' },
+      { id: 'crescent', kanji: '月光斬', name: 'Crescent Slash', how: 'Two fingers up, then swipe fast.' },
+      { id: 'time', kanji: '時廻', name: 'Time Loop', how: 'Press both hands together and hold. Time runs backward.' },
+    ],
+  },
+  ferrum: {
+    name: 'Ferrum',
+    kanji: '鋼',
+    element: 'Tech',
+    a: [0.25, 0.85, 1.0],
+    b: [0.9, 1.0, 1.0],
+    gold: [1.0, 0.7, 0.2],
+    goldB: [1.0, 0.95, 0.7],
+    css: ['#3fd8ff', '#e4ffff'],
+    grade: [0.9, 1.0, 1.08],
+    moves: [
+      { id: 'repulsor', kanji: '光線砲', name: 'Repulsor Blast', how: 'Hold an open palm still to charge. Flick or thrust to fire. Aim with your fingers.' },
+      { id: 'hud', kanji: '戦術', name: 'HUD Mode', how: 'Make a fist and hold it. Again to switch off.' },
+      { id: 'missile', kanji: '追尾弾', name: 'Missile Volley', how: 'Two fingers up, then flick.' },
+      { id: 'thrusters', kanji: '飛行', name: 'Thrusters', how: 'Both palms open, fingers pointing down.' },
+      { id: 'suit', kanji: '装着', name: 'Suit-Up', how: 'Bring both fists together and hold. Powers up every move.' },
+    ],
+  },
 };
 
 // Characters for the Google Fonts subset request (only these glyphs download).
-export const KANJI_SET = '炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫';
+export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着'))).join('');

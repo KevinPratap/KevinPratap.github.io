@@ -19,6 +19,8 @@ export class Overlay {
     this.bars = 0; this.barsTarget = 0;
     this.pr = 1; this.w = 1; this.h = 1;
     this.ch = null;
+    this.signData = null; this.signShow = 0; this.signPop = []; this.signN = 0;
+    this.hudData = null; this.hudShow = 0; this.hudT = 0;
     this.hasLetterSpacing = 'letterSpacing' in this.g;
   }
 
@@ -99,6 +101,14 @@ export class Overlay {
     if (this.cracks.length > 3) this.cracks.shift();
   }
 
+  // Hand-sign strip along the bottom: filled seals, a ring filling for the
+  // sign being held, and a dim ghost of the sign currently detected.
+  // Engines call this every frame they want it shown.
+  setSigns(d) { this.signData = d; }
+
+  // Suit HUD: targeting rings, ladders, compass and readouts.
+  setHud(d) { this.hudData = d; }
+
   reticle(x, y, size) { this.reticles.push({ x, y, size, t: 0 }); }
 
   clear() {
@@ -106,6 +116,7 @@ export class Overlay {
     this.reticles.length = 0;
     this.comboT = 9;
     this.cracks.length = 0;
+    this.signData = null; this.hudData = null; this.signN = 0;
     this.speed = this.speedTarget = 0;
     this.bars = this.barsTarget = 0;
   }
@@ -148,10 +159,166 @@ export class Overlay {
       if (c.t > c.dur) this.callouts.splice(i, 1);
     }
     this.callouts.forEach((c) => this.drawCallout(c));
+    this.hudShow += ((this.hudData ? this.hudData.k : 0) - this.hudShow) * (1 - Math.exp(-dt * 6));
+    if (this.hudShow > 0.01) { this.hudT += dt; if (this.hudData) this.drawHud(this.hudData, this.hudShow); }
+    this.hudData = null;
+    this.signShow += ((this.signData ? 1 : 0) - this.signShow) * (1 - Math.exp(-dt * 8));
+    if (this.signData) this.drawSigns(this.signData, dt);
+    this.signData = null;
     this.voiceShow += ((this.voiceOn ? 1 : 0) - this.voiceShow) * (1 - Math.exp(-dt * 6));
     if (this.voiceShow > 0.02) this.drawVoice();
     this.comboT += dt;
     if (this.comboN >= 2 && this.comboT < 2.4) this.drawCombo();
+  }
+
+  drawSigns(d, dt) {
+    const g = this.g, W = this.w, H = this.h, base = Math.min(W, H);
+    const ch = this.ch, cA = ch ? ch.a : [1, 1, 1], cB = ch ? ch.b : [1, 1, 1];
+    const n = d.slots, r = base * 0.046, gap = r * 2.5;
+    const x0 = W / 2 - ((n - 1) * gap) / 2, y = H * (d.y || 0.8);
+    if (d.seq.length > this.signN) this.signPop[d.seq.length - 1] = 0;
+    this.signN = d.seq.length;
+    g.save();
+    g.globalAlpha = Math.min(1, this.signShow);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i * gap;
+      const filled = i < d.seq.length;
+      let pop = 1;
+      if (filled && this.signPop[i] !== undefined && this.signPop[i] < 0.35) {
+        this.signPop[i] += dt;
+        pop = 1 + 0.55 * Math.max(0, 1 - this.signPop[i] / 0.35);
+      }
+      g.save();
+      g.translate(x, y);
+      g.scale(pop, pop);
+      g.lineWidth = 2.4;
+      g.strokeStyle = filled ? rgbToCss(cB, 1) : 'rgba(255,255,255,0.28)';
+      if (!filled) g.setLineDash([5, 6]);
+      g.beginPath(); g.arc(0, 0, r, 0, TAU); g.stroke();
+      g.setLineDash([]);
+      if (filled) {
+        g.fillStyle = rgbToCss(cA, 0.35);
+        g.shadowColor = rgbToCss(cA, 1); g.shadowBlur = r * 0.9;
+        g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill();
+        g.shadowBlur = 0;
+        g.font = `900 ${r * 1.15}px ${KANJI_FONT}`;
+        g.fillStyle = '#fff';
+        g.fillText(d.seq[i], 0, r * 0.06);
+      } else if (i === d.seq.length && d.pending) {
+        // the sign being held: ghost glyph plus a filling ring
+        g.font = `900 ${r * 1.15}px ${KANJI_FONT}`;
+        g.fillStyle = rgbToCss(cB, 0.45);
+        g.fillText(d.pending.k, 0, r * 0.06);
+        g.strokeStyle = rgbToCss(cB, 1);
+        g.lineWidth = 4;
+        g.beginPath(); g.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + TAU * d.pending.p); g.stroke();
+      }
+      g.restore();
+    }
+    if (d.label) {
+      g.font = `600 ${base * 0.024}px "JetBrains Mono", ui-monospace, monospace`;
+      g.fillStyle = 'rgba(255,255,255,0.75)';
+      g.fillText(d.label, W / 2, y + r * 1.9);
+    }
+    g.restore();
+  }
+
+  drawHud(d, k) {
+    const g = this.g, W = this.w, H = this.h, base = Math.min(W, H), t = this.hudT;
+    const col = d.gold ? [1, 0.78, 0.25] : (this.ch ? this.ch.a : [0.3, 0.9, 1]);
+    const hi = d.gold ? [1, 0.95, 0.7] : (this.ch ? this.ch.b : [1, 1, 1]);
+    const c1 = (a) => rgbToCss(col, a * k), c2 = (a) => rgbToCss(hi, a * k);
+    const mono = (s) => `600 ${s}px "JetBrains Mono", ui-monospace, monospace`;
+    g.save();
+    g.lineWidth = 2;
+    g.lineCap = 'butt';
+    // corner brackets
+    const mx = W * 0.035, my = H * 0.05, bl = base * 0.07;
+    g.strokeStyle = c1(0.9);
+    g.beginPath();
+    for (const [sx, sy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+      const x = sx ? W - mx : mx, y = sy ? H - my : my, dx = sx ? -1 : 1, dy = sy ? -1 : 1;
+      g.moveTo(x + dx * bl, y); g.lineTo(x, y); g.lineTo(x, y + dy * bl);
+    }
+    g.stroke();
+    // compass ruler along the top
+    const cw = W * 0.42, cx = W / 2, cy = my + base * 0.03;
+    g.strokeStyle = c1(0.7);
+    g.beginPath();
+    for (let i = -20; i <= 20; i++) {
+      const x = cx + i * (cw / 40) - ((t * 14) % (cw / 40));
+      if (Math.abs(x - cx) > cw / 2) continue;
+      const long = ((i + 40) % 5 === 0);
+      g.moveTo(x, cy); g.lineTo(x, cy + (long ? base * 0.022 : base * 0.011));
+    }
+    g.stroke();
+    g.fillStyle = c2(1);
+    g.beginPath(); g.moveTo(cx, cy + base * 0.03); g.lineTo(cx - 6, cy + base * 0.044); g.lineTo(cx + 6, cy + base * 0.044); g.closePath(); g.fill();
+    // left altitude ladder
+    g.strokeStyle = c1(0.55);
+    g.beginPath();
+    for (let i = 0; i < 24; i++) {
+      const y = H * 0.3 + i * (H * 0.4 / 24) + ((t * 18) % (H * 0.4 / 24));
+      if (y > H * 0.7) continue;
+      g.moveTo(mx + 6, y); g.lineTo(mx + (i % 4 === 0 ? 30 : 16), y);
+    }
+    g.stroke();
+    g.font = mono(base * 0.02); g.textAlign = 'left'; g.textBaseline = 'middle';
+    g.fillStyle = c1(0.9);
+    g.fillText('ALT', mx + 6, H * 0.3 - 18);
+    g.fillText(String(Math.round(d.alt || 0)).padStart(4, '0'), mx + 6, H * 0.7 + 18);
+    // right power gauge
+    const gx = W - mx - 22, gy0 = H * 0.3, gh = H * 0.4;
+    g.strokeStyle = c1(0.8);
+    g.strokeRect(gx, gy0, 14, gh);
+    g.fillStyle = c1(0.85);
+    const pw = Math.max(0, Math.min(1, d.power ?? 0.5));
+    g.fillRect(gx + 2, gy0 + gh * (1 - pw) + 2, 10, gh * pw - 4);
+    g.textAlign = 'right';
+    g.fillText('PWR', gx + 14, gy0 - 18);
+    g.fillText(`${Math.round(pw * 100)}%`, gx + 14, gy0 + gh + 18);
+    // sweep line
+    const sy = ((t * 0.45) % 1) * H;
+    const sg = g.createLinearGradient(0, sy - 40, 0, sy);
+    sg.addColorStop(0, c1(0)); sg.addColorStop(1, c1(0.16));
+    g.fillStyle = sg; g.fillRect(0, sy - 40, W, 40);
+    // targets
+    (d.targets || []).forEach((tg, i) => {
+      const r = tg.r, lk = tg.lock ?? 0;
+      g.save();
+      g.translate(tg.x, tg.y);
+      g.rotate(t * (i % 2 ? -1.2 : 1.2));
+      g.strokeStyle = c1(0.9);
+      g.setLineDash([r * 0.32, r * 0.18]);
+      g.beginPath(); g.arc(0, 0, r, 0, TAU); g.stroke();
+      g.setLineDash([]);
+      g.rotate(-t * (i % 2 ? -2.4 : 2.4));
+      g.strokeStyle = c2(0.9);
+      g.beginPath(); g.arc(0, 0, r * 0.62, 0, TAU * (0.25 + 0.75 * lk)); g.stroke();
+      g.restore();
+      g.strokeStyle = c2(1);
+      const b = r * 1.25, bl2 = r * 0.35;
+      g.beginPath();
+      for (const [sx, sy2] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        g.moveTo(tg.x + sx * b, tg.y + sy2 * (b - bl2)); g.lineTo(tg.x + sx * b, tg.y + sy2 * b); g.lineTo(tg.x + sx * (b - bl2), tg.y + sy2 * b);
+      }
+      g.stroke();
+      g.font = mono(base * 0.019); g.textAlign = 'left';
+      g.fillStyle = c2(1);
+      g.fillText(tg.label || 'TARGET', tg.x + b + 8, tg.y - r * 0.4);
+      g.fillStyle = c1(0.9);
+      g.fillText(`LOCK ${Math.round(lk * 100)}%`, tg.x + b + 8, tg.y - r * 0.4 + base * 0.026);
+    });
+    // readout block, bottom left
+    g.font = mono(base * 0.02); g.textAlign = 'left';
+    const lines = d.lines || [];
+    lines.forEach((ln, i) => {
+      g.fillStyle = i === 0 ? c2(1) : c1(0.85);
+      g.fillText(ln, mx + 6, H - my - 12 - (lines.length - 1 - i) * base * 0.03);
+    });
+    g.restore();
   }
 
   // Vertical shout meter on the left edge: fills and flares as you yell.

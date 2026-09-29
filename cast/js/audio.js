@@ -276,6 +276,61 @@ export class SFX {
         this.play('thunder', 1.3);
         this.hit({ type: 'lowpass', f0: 6000, f1: 70, dur: 1.5, gain: 1.0, send: 0.6, when: 0.02 });
         break;
+      case 'seal':
+        this.tone({ type: 'triangle', f0: 620 + s * 170, f1: 420 + s * 120, dur: 0.11, gain: 0.2, send: 0.35 });
+        this.hit({ type: 'highpass', f0: 4200, f1: 7000, dur: 0.04, gain: 0.3, attack: 0.001, send: 0.2 });
+        this.tone({ type: 'sine', f0: 1800 + s * 240, f1: 2400 + s * 240, dur: 0.16, gain: 0.07, when: 0.05, send: 0.6 });
+        break;
+      case 'poof':
+        this.hit({ type: 'lowpass', f0: 2600, f1: 160, dur: 0.55 * s, gain: 0.75, attack: 0.004, send: 0.4 });
+        this.tone({ f0: 160, f1: 45, dur: 0.35, gain: 0.55 });
+        this.hit({ type: 'highpass', f0: 5500, f1: 3000, dur: 0.1, gain: 0.2 });
+        break;
+      case 'kunai':
+        this.hit({ type: 'bandpass', f0: 2200, f1: 7500, q: 1.6, dur: 0.22, gain: 0.5, send: 0.2 });
+        this.tone({ type: 'triangle', f0: 3200, f1: 1600, dur: 0.1, gain: 0.08, when: 0.12, send: 0.5 });
+        break;
+      case 'chime':
+        [880, 1318, 1760, 2637].forEach((f, i) => this.tone({ type: 'triangle', f0: f, f1: f * 1.005, dur: 1.3, gain: 0.09 - i * 0.012, attack: 0.004, send: 0.9, when: 0.06 * i }));
+        this.tone({ f0: 110, f1: 55, dur: 0.6, gain: 0.5 });
+        break;
+      case 'rewind':
+        this.hit({ type: 'bandpass', f0: 200, f1: 7000, q: 1.2, dur: 0.9, gain: 0.5, attack: 0.7, send: 0.6 });
+        this.tone({ type: 'sawtooth', f0: 120, f1: 1800, dur: 0.85, gain: 0.16, attack: 0.7, send: 0.5 });
+        this.tone({ f0: 90, f1: 26, dur: 0.9, gain: 0.9, when: 0.85 });
+        break;
+      case 'mirror':
+        this.hit({ type: 'lowpass', f0: 9000, f1: 200, dur: 1.4, gain: 0.7, send: 0.7 });
+        [523, 659, 784, 1046].forEach((f, i) => this.tone({ type: 'sine', f0: f, f1: f * 2, dur: 1.2, gain: 0.08, attack: 0.05, send: 0.9, when: 0.07 * i }));
+        this.tone({ f0: 100, f1: 30, dur: 1.0, gain: 0.8 });
+        break;
+      case 'repulsor':
+        this.tone({ type: 'sawtooth', f0: 300, f1: 2400, dur: 0.16, gain: 0.25, attack: 0.002, send: 0.3 });
+        this.tone({ f0: 170, f1: 28, dur: 0.7, gain: 1.0, when: 0.05 });
+        this.hit({ type: 'highpass', f0: 4000, f1: 9000, dur: 0.16, gain: 0.5, attack: 0.002, send: 0.4, when: 0.03 });
+        this.hit({ type: 'lowpass', f0: 3500, f1: 120, dur: 0.7 * s, gain: 0.6, when: 0.05, send: 0.4 });
+        break;
+      case 'lock':
+        this.tone({ type: 'square', f0: 1900, f1: 1880, dur: 0.05, gain: 0.07, send: 0.1 });
+        this.tone({ type: 'square', f0: 2500, f1: 2480, dur: 0.06, gain: 0.07, when: 0.08, send: 0.1 });
+        break;
+      case 'hud':
+        [900, 1200, 1600, 2100].forEach((f, i) => this.tone({ type: 'square', f0: f, f1: f, dur: 0.05, gain: 0.05, when: 0.06 * i, send: 0.2 }));
+        this.hit({ type: 'bandpass', f0: 300, f1: 5000, q: 1, dur: 0.35, gain: 0.25, attack: 0.25 });
+        break;
+      case 'missile':
+        this.hit({ type: 'bandpass', f0: 700, f1: 3800, q: 1.1, dur: 0.6, gain: 0.45, attack: 0.02, send: 0.3 });
+        this.tone({ type: 'sawtooth', f0: 220, f1: 700, dur: 0.4, gain: 0.08, send: 0.2 });
+        break;
+      case 'suit':
+        for (let i = 0; i < 5; i++) {
+          this.hit({ type: 'bandpass', f0: 1800 + i * 300, f1: 600, q: 4, dur: 0.06, gain: 0.5, attack: 0.001, when: i * 0.09, send: 0.3 });
+          this.tone({ type: 'square', f0: 260 + i * 40, f1: 140, dur: 0.05, gain: 0.1, when: i * 0.09 });
+        }
+        this.hit({ type: 'lowpass', f0: 7000, f1: 90, dur: 1.6, gain: 0.95, when: 0.5, send: 0.6 });
+        this.tone({ f0: 130, f1: 24, dur: 1.4, gain: 1.0, when: 0.5 });
+        [330, 495, 660].forEach((f, i) => this.tone({ type: 'sawtooth', f0: f, f1: f * 1.6, dur: 1.2, gain: 0.06, attack: 0.1, send: 0.8, when: 0.5 + 0.03 * i }));
+        break;
       case 'shutter':
         this.tone({ type: 'square', f0: 1600, f1: 1500, dur: 0.04, gain: 0.08, send: 0 });
         break;
@@ -382,7 +437,19 @@ export class SFX {
     bmf.connect(beam.g);
     beam.apply = (L, t) => bmf.frequency.setTargetAtTime(600 + L * 2400, t, 0.08);
 
-    this.loops = { charge, roar, drone, hum, vortex, buzz, beam };
+    // Thruster roar: turbulent noise with a whining turbine underneath.
+    const jet = bus(0.6);
+    const jf = ctx.createBiquadFilter(); jf.type = 'bandpass'; jf.frequency.value = 1400; jf.Q.value = 0.6;
+    noiseSrc().connect(jf); jf.connect(jet.g);
+    const jo = ctx.createOscillator(); jo.type = 'sawtooth'; jo.frequency.value = 180;
+    const jg = ctx.createGain(); jg.gain.value = 0.06;
+    jo.connect(jg); jg.connect(jet.g); jo.start();
+    jet.apply = (L, t) => {
+      jf.frequency.setTargetAtTime(900 + L * 2200, t, 0.1);
+      jo.frequency.setTargetAtTime(160 + L * 300, t, 0.1);
+    };
+
+    this.loops = { charge, roar, drone, hum, vortex, buzz, beam, jet };
   }
 
   // Engines raise loop levels every frame; unset loops fade out.

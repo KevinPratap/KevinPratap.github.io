@@ -78,6 +78,10 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent-2); outl
 .char-card[data-char='nyx'] { --c1: #8b5cf6; --c2: #d4b8ff; animation-delay: 0.38s; }
 .char-card[data-char='raiju'] { --c1: #ffc629; --c2: #fff5c4; animation-delay: 0.46s; }
 .char-card[data-char='kai'] { --c1: #3d9eff; --c2: #cfeeff; animation-delay: 0.54s; }
+.char-card[data-char='kage'] { --c1: #1fe89a; --c2: #c8ffe9; animation-delay: 0.62s; }
+.char-card[data-char='mystral'] { --c1: #f24fd8; --c2: #ffd9f7; animation-delay: 0.7s; }
+.char-card[data-char='ferrum'] { --c1: #3fd8ff; --c2: #e4ffff; animation-delay: 0.78s; }
+@media (min-width: 621px) { .char-card:last-child:nth-child(odd) { grid-column: 1 / -1; } }
 .char-card::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background: radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--c1) 26%, transparent), transparent 60%);

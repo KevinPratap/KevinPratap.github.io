@@ -12,6 +12,9 @@ import { Ember } from './engines/ember.js';
 import { Nyx } from './engines/nyx.js';
 import { Raiju } from './engines/raiju.js';
 import { Kai } from './engines/kai.js';
+import { Kage } from './engines/kage.js';
+import { Mystral } from './engines/mystral.js';
+import { Ferrum } from './engines/ferrum.js';
 import { selectBackground } from './select-bg.js';
 import { Body } from './body.js';
 import { Voice } from './voice.js';
@@ -19,7 +22,7 @@ import { Replay } from './replay.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const ORDER = ['ember', 'nyx', 'raiju', 'kai'];
+const ORDER = ['ember', 'nyx', 'raiju', 'kai', 'kage', 'mystral', 'ferrum'];
 
 const screens = ['select', 'loading', 'error', 'live'];
 function show(name) {
@@ -193,8 +196,8 @@ function initGraphics() {
     onError: (m) => { toast(m); setRecUI(false); },
   });
   replay = new Replay({ glCanvas: $('gl'), overlayCanvas: $('overlay'), sfx });
-  const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, voice, onMove: markMove };
-  engines = { ember: new Ember(ctx), nyx: new Nyx(ctx), raiju: new Raiju(ctx), kai: new Kai(ctx) };
+  const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, voice, energy, onMove: markMove };
+  engines = { ember: new Ember(ctx), nyx: new Nyx(ctx), raiju: new Raiju(ctx), kai: new Kai(ctx), kage: new Kage(ctx), mystral: new Mystral(ctx), ferrum: new Ferrum(ctx) };
   state.pr = pipeline.pr;
   state.booted = true;
   window.addEventListener('resize', onResize);
@@ -215,6 +218,7 @@ function enterCharacter(name, intro) {
   streaks.clear();
   lines.clear();
   Post.clearSources();
+  Post.resetExtras();
   Post.freezeT = 0; Post.glitch = 0; Post.ghost = 0; Post.edge = 0;
   state.combo = 0;
   overlay.clear();
@@ -312,6 +316,7 @@ function frame(now) {
   if (state.sim) state.sim.update(dt);
   else { tracker.detect(video, now); body.detect(video, now); }
   voice.update(dt, time);
+  Post.maskReady = body.ready;
   tracker.update(dt);
   const H = tracker.hands;
   for (const h of [H.L, H.R]) {

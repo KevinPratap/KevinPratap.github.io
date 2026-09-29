@@ -95,6 +95,90 @@ const SCRIPTS = {
   },
 };
 
+
+// ---- generated scripts for the newer characters ----
+
+// One hand-sign chain: single-hand signs use the right hand, 'clap' both.
+function signChain(list, t0, out) {
+  const SIGN = {
+    fist: [0.05], two: [0.5, 'two'], point: [0.5, 'point'], open: [0.95],
+  };
+  let t = t0;
+  for (const s of list) {
+    if (s === 'clap') {
+      out.R.push([t, 0.53, 0.56, 0.16, 0.6], [t + 0.9, 0.53, 0.56, 0.16, 0.6]);
+      out.L.push([t, 0.47, 0.56, 0.16, 0.6], [t + 0.9, 0.47, 0.56, 0.16, 0.6]);
+      t += 0.9;
+    } else {
+      const [open, pose] = SIGN[s];
+      out.R.push([t, 0.62, 0.55, 0.16, open, pose], [t + 0.55, 0.62, 0.55, 0.16, open, pose]);
+      t += 0.7;
+    }
+  }
+  out.R.push([t, null]);
+  out.L.push([t, null]);
+  return t;
+}
+
+function kageScript() {
+  const out = { len: 30, R: [[0, null]], L: [[0, null]] };
+  let t = 1.0;
+  t = signChain(['two', 'fist', 'clap'], t, out) + 2.6;
+  t = signChain(['open', 'fist', 'point'], t, out) + 2.2;
+  t = signChain(['point', 'two', 'open'], t, out) + 2.2;
+  t = signChain(['fist', 'point', 'two', 'clap'], t, out) + 3.0;
+  t = signChain(['fist', 'two', 'point', 'open', 'clap'], t, out);
+  out.R.push([out.len, null]); out.L.push([out.len, null]);
+  return out;
+}
+
+function circleKeys(cx, cy, rpx, t0, dur, turns) {
+  const keys = [];
+  const N = 26;
+  for (let i = 0; i <= N; i++) {
+    const a = -Math.PI / 2 + (i / N) * Math.PI * 2 * turns;
+    keys.push([t0 + (i / N) * dur, cx + Math.cos(a) * rpx / 1280, cy + Math.sin(a) * rpx / 720, 0.16, 0.5, 'point', -0.5]);
+  }
+  return keys;
+}
+
+function mystralScript() {
+  const R = [[0, null],
+    [0.3, 0.66, 0.56, 0.16, 0.95], [3.0, 0.66, 0.56, 0.16, 0.95], [3.14, 0.64, 0.54, 0.27, 0.95], [3.5, 0.64, 0.54, 0.27, 0.95], [3.6, null],
+    ...circleKeys(0.6, 0.52, 150, 5.0, 1.5, 1.25), [6.6, 0.6, 0.52, 0.16, 0.5, 'point', -0.5], [7.0, null],
+    [10.0, 0.6, 0.5, 0.16, 0.5, 'two', -0.2], [13.2, 0.6, 0.5, 0.16, 0.5, 'two', -0.2], [13.3, null],
+    [14.5, 0.3, 0.64, 0.16, 0.5, 'two', -0.3], [15.2, 0.3, 0.64, 0.16, 0.5, 'two', -0.3], [15.4, 0.86, 0.3, 0.16, 0.5, 'two', -0.3], [16.0, 0.86, 0.3, 0.16, 0.5, 'two', -0.3], [16.1, null],
+    [18.0, 0.53, 0.56, 0.16, 0.6], [23.0, 0.53, 0.56, 0.16, 0.6], [23.2, null],
+  ];
+  const L = [[0, null],
+    [0.5, 0.34, 0.56, 0.16, 0.95], [3.0, 0.34, 0.56, 0.16, 0.95], [3.1, null],
+    [10.0, 0.4, 0.5, 0.16, 0.5, 'two', 0.2], [13.2, 0.4, 0.5, 0.16, 0.5, 'two', 0.2], [13.3, null],
+    [18.0, 0.47, 0.56, 0.16, 0.6], [23.0, 0.47, 0.56, 0.16, 0.6], [23.2, null],
+  ];
+  return { len: 24, R, L };
+}
+
+function ferrumScript() {
+  const R = [[0, null],
+    [0.3, 0.66, 0.56, 0.16, 0.95], [2.0, 0.66, 0.56, 0.16, 0.95], [2.12, 0.95, 0.4, 0.16, 0.95], [2.5, 0.95, 0.4, 0.16, 0.95], [2.6, null],
+    [3.4, 0.6, 0.56, 0.16, 0.95], [4.9, 0.6, 0.56, 0.16, 0.95], [5.05, 0.58, 0.54, 0.27, 0.95], [5.5, 0.58, 0.54, 0.27, 0.95], [5.6, null],
+    [6.5, 0.6, 0.55, 0.16, 0.05], [7.7, 0.6, 0.55, 0.16, 0.05], [7.8, null],
+    [8.6, 0.5, 0.62, 0.16, 0.5, 'two', -0.2], [9.5, 0.5, 0.62, 0.16, 0.5, 'two', -0.2], [9.63, 0.85, 0.3, 0.16, 0.5, 'two', -0.2], [10.2, 0.85, 0.3, 0.16, 0.5, 'two', -0.2], [10.3, null],
+    [12.0, 0.62, 0.34, 0.16, 0.95, null, Math.PI], [15.0, 0.62, 0.34, 0.16, 0.95, null, Math.PI], [15.1, null],
+    [16.5, 0.53, 0.58, 0.17, 0.05], [19.0, 0.53, 0.58, 0.17, 0.05], [19.1, null],
+    [21.6, 0.66, 0.56, 0.16, 0.95], [22.9, 0.66, 0.56, 0.16, 0.95], [23.02, 0.95, 0.4, 0.16, 0.95], [23.5, 0.95, 0.4, 0.16, 0.95], [23.6, null],
+  ];
+  const L = [[0, null],
+    [12.0, 0.38, 0.34, 0.16, 0.95, null, Math.PI], [15.0, 0.38, 0.34, 0.16, 0.95, null, Math.PI], [15.1, null],
+    [16.5, 0.47, 0.58, 0.17, 0.05], [19.0, 0.47, 0.58, 0.17, 0.05], [19.1, null],
+  ];
+  return { len: 25, R, L };
+}
+
+SCRIPTS.kage = kageScript();
+SCRIPTS.mystral = mystralScript();
+SCRIPTS.ferrum = ferrumScript();
+
 const ss = (t) => t * t * (3 - 2 * t);
 
 function sample(keys, t) {

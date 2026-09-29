@@ -192,6 +192,47 @@ export function makeSigilTextures(style, seed = 7) {
         g.restore();
       }
       circle(g, R * 0.12, 3);
+    } else if (style === 'mystral') {
+      // mandala: nested hexagram and octagram, petal ring, small orbits
+      g.lineWidth = 3;
+      for (let t = 0; t < 2; t++) {
+        g.beginPath();
+        for (let i = 0; i <= 3; i++) {
+          const a = (i / 3) * TAU + t * Math.PI - Math.PI / 2;
+          const x = Math.cos(a) * R * 0.62, y = Math.sin(a) * R * 0.62;
+          i ? g.lineTo(x, y) : g.moveTo(x, y);
+        }
+        g.stroke();
+      }
+      g.lineWidth = 2;
+      g.beginPath();
+      for (let i = 0; i <= 8; i++) {
+        const a = ((i * 3) % 8 / 8) * TAU;
+        const x = Math.cos(a) * R * 0.44, y = Math.sin(a) * R * 0.44;
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      g.stroke();
+      circle(g, R * 0.44, 2);
+      circle(g, R * 0.27, 2.5);
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * TAU;
+        g.save();
+        g.rotate(a);
+        g.beginPath();
+        g.moveTo(0, -R * 0.27);
+        g.quadraticCurveTo(R * 0.05, -R * 0.35, 0, -R * 0.44);
+        g.quadraticCurveTo(-R * 0.05, -R * 0.35, 0, -R * 0.27);
+        g.stroke();
+        g.restore();
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * TAU - Math.PI / 2;
+        g.beginPath();
+        g.arc(Math.cos(a) * R * 0.62, Math.sin(a) * R * 0.62, R * 0.035, 0, TAU);
+        g.fill();
+      }
+      g.beginPath(); g.arc(0, 0, R * 0.08, 0, TAU); g.fill();
+      circle(g, R * 0.14, 2);
     } else {
       g.lineWidth = 1.8;
       for (let i = 0; i < 8; i++) {

@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 import { clamp } from '../util.js';
 
 const MAXD = 10;
-const TYPE = { shock: 0, lens: 1, heat: 2, swirl: 3, tear: 4 };
+const TYPE = { shock: 0, lens: 1, heat: 2, swirl: 3, tear: 4, window: 5 };
 
 const COMPOSITE_FRAG = /* glsl */ `
 uniform sampler2D tVideo;
@@ -45,6 +45,12 @@ uniform float uGhost;
 uniform float uGhostOff;
 uniform float uEdge;
 uniform vec3 uEdgeCol;
+uniform vec4 uCl[4];
+uniform vec3 uClCol;
+uniform float uHasMask;
+uniform float uKal;
+uniform float uKalRot;
+uniform float uKalSeg;
 uniform vec4 uD[${MAXD}];
 uniform vec4 uDP[${MAXD}];
 varying vec2 vUv;
@@ -62,11 +68,26 @@ void main() {
   vec2 px = vec2(vUv.x, 1.0 - vUv.y) * uRes;
   px = uZoomC + (px - uZoomC) / uZoom;
   px += uShake;
+  if (uKal > 0.0) {
+    // Mirror dimension: the whole frame (camera and effects) folds into a
+    // rotating kaleidoscope around the screen centre.
+    vec2 kc = uRes * 0.5;
+    vec2 kv = px - kc;
+    float kr = length(kv);
+    float seg = 6.28318 / uKalSeg;
+    float ka = mod(atan(kv.y, kv.x) + uKalRot, seg);
+    ka = abs(ka - seg * 0.5);
+    vec2 kf = kc + vec2(cos(ka), sin(ka)) * kr * (1.0 - 0.18 * uKal);
+    px = mix(px, kf, uKal);
+  }
   vec2 p = px;
   float horizon = 0.0;
   float rim = 0.0;
   float portal = 0.0;
   float tear = 0.0;
+  float winI = 0.0;
+  vec2 winC = vec2(0.0);
+  float winR = 1.0;
   float ca = uCA;
 
   if (uGlitch > 0.0) {
@@ -117,6 +138,11 @@ void main() {
       float s = sin(ang);
       float c = cos(ang);
       p = d.xy + mat2(c, -s, s, c) * (p - d.xy);
+    } else if (q.x > 4.5) {
+      // portal window: a disc that shows the scene from somewhere else
+      float rn = r / max(d.z, 1.0);
+      float ins = (1.0 - smoothstep(0.93, 1.0, rn)) * clamp(d.w, 0.0, 1.0);
+      if (ins > winI) { winI = ins; winC = d.xy; winR = d.z; }
     } else {
       // space tear: the two sides of a line slide apart and the crack glows
       vec2 t = vec2(cos(q.y), sin(q.y));
@@ -146,6 +172,22 @@ void main() {
   g *= 1.0 - uDim * 0.62;
   g = mix(g, g * uGrade, uGradeAmt);
   g *= 1.0 - horizon;
+  if (uCl[0].z + uCl[1].z + uCl[2].z + uCl[3].z > 0.0) {
+    // shadow clones: the silhouette is cut out of the camera image and
+    // stamped again at an offset, behind the real body
+    float m0 = uHasMask > 0.5 ? texture2D(tMask, vidUv(p)).r : 0.0;
+    for (int i = 0; i < 4; i++) {
+      vec4 c = uCl[i];
+      if (c.z <= 0.0) continue;
+      vec2 q2 = p - c.xy;
+      float m = uHasMask > 0.5 ? smoothstep(0.35, 0.7, texture2D(tMask, vidUv(q2)).r) : 0.45;
+      vec3 cv = texture2D(tVideo, vidUv(q2)).rgb;
+      float cl = dot(cv, vec3(0.299, 0.587, 0.114));
+      cv = mix(cv, vec3(cl) * uClCol * 1.7, 0.42);
+      float vis = m * c.z * (1.0 - smoothstep(0.3, 0.6, m0));
+      g = mix(g, cv, vis);
+    }
+  }
   if (uGhost > 0.0) {
     // afterimages: copies of the frame sliding out to both sides
     vec3 ga = texture2D(tVideo, vidUv(p + vec2(uGhostOff, 0.0))).rgb;
@@ -164,6 +206,20 @@ void main() {
   vec3 light = texture2D(tLight, lu).rgb * 0.6 + texture2D(tLight2, lu).rgb * 0.9;
   g *= 1.0 + light * uLight;
   g += light * uLight * 0.06;
+  if (winI > 0.0) {
+    vec2 wv = p - winC;
+    float rn = length(wv) / max(winR, 1.0);
+    float ang = uTime * 0.6 + (1.0 - rn) * 2.2;
+    float sn = sin(ang), cs = cos(ang);
+    vec2 wp = winC + (mat2(cs, -sn, sn, cs) * wv) * -1.7 + vec2(0.0, sin(uTime * 0.7) * 40.0);
+    vec3 wc = texture2D(tVideo, vidUv(wp)).rgb;
+    float wl = dot(wc, vec3(0.299, 0.587, 0.114));
+    wc = mix(wc.bgr, vec3(wl), 0.35) * vec3(1.1, 0.8, 1.3) + uRimCol * 0.1;
+    vec2 sp = wv / max(winR, 1.0) * 9.0 + vec2(uTime * 0.5, 0.0);
+    float star = step(0.93, hash12(floor(sp))) * (1.0 - smoothstep(0.0, 0.3, length(fract(sp) - 0.5)));
+    wc = wc * 0.8 + star * 0.9;
+    g = mix(g, wc, winI);
+  }
   vec3 col = g + fx * (1.0 - horizon) + uRimCol * (rim + portal) + uRimCol * tear;
 
   if (uAura > 0.0) {
@@ -253,7 +309,18 @@ export const Post = {
   transients: [],
   persistent: [],
   aura: 0, auraTarget: 0, auraA: [1, 0.7, 0.2], auraB: [1, 0.95, 0.7],
+  clones: [0, 1, 2, 3].map(() => ({ dx: 0, dy: 0, a: 0, ta: 0 })), clCol: [0.3, 1, 0.75], maskReady: false,
+  kal: 0, kalTarget: 0, kalSeg: 6, kalRot: 0,
   freezeT: 0, glitch: 0, ghost: 0, ghostOff: 0, ghostVel: 0, edge: 0, edgeTarget: 0, edgeCol: [1, 0.8, 0.2], flare: 0.5, flareCol: [1, 1, 1],
+
+  // Mirror-dimension kaleidoscope; strongest request wins each frame.
+  wantKaleido(amount, seg = 6) { if (amount > this.kalTarget) { this.kalTarget = amount; this.kalSeg = seg; } },
+  // Set target opacity/offset of clone i (0..3); it eases in and out.
+  clone(i, dx, dy, a) { const c = this.clones[i]; c.dx = dx; c.dy = dy; c.ta = a; },
+  resetExtras() {
+    this.clones.forEach((c) => { c.a = c.ta = 0; });
+    this.kal = this.kalTarget = 0;
+  },
 
   // Hit-stop: slows the simulation for a beat on big impacts.
   freeze(t) { this.freezeT = Math.max(this.freezeT, t); },
@@ -357,6 +424,12 @@ export class Pipeline {
       uGhostOff: { value: 0 },
       uEdge: { value: 0 },
       uEdgeCol: { value: new THREE.Color(1, 0.8, 0.2) },
+      uCl: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
+      uClCol: { value: new THREE.Color(0.3, 1, 0.75) },
+      uHasMask: { value: 0 },
+      uKal: { value: 0 },
+      uKalRot: { value: 0 },
+      uKalSeg: { value: 6 },
       uD: { value: Array.from({ length: MAXD }, () => new THREE.Vector4()) },
       uDP: { value: Array.from({ length: MAXD }, () => new THREE.Vector4()) },
     };
@@ -488,6 +561,21 @@ export class Pipeline {
     u.uGhostOff.value = P.ghostOff;
     u.uEdge.value = P.edge;
     u.uEdgeCol.value.setRGB(...P.edgeCol);
+    for (let i = 0; i < 4; i++) {
+      const c = P.clones[i];
+      c.a += (c.ta - c.a) * (1 - Math.exp(-dt * 9));
+      if (c.a < 0.004 && c.ta === 0) c.a = 0;
+      u.uCl.value[i].set(c.dx, c.dy, c.a, 0);
+    }
+    u.uClCol.value.setRGB(...P.clCol);
+    u.uHasMask.value = P.maskReady ? 1 : 0;
+    P.kal += (P.kalTarget - P.kal) * (1 - Math.exp(-dt * (P.kalTarget > P.kal ? 5 : 3)));
+    P.kalTarget = 0;
+    if (P.kal < 0.003) P.kal = 0;
+    P.kalRot += dt * 0.45 * P.kal;
+    u.uKal.value = P.kal;
+    u.uKalRot.value = P.kalRot;
+    u.uKalSeg.value = P.kalSeg;
     this.bloomPass.strength = 0.6 + P.bloomBoost * 0.4 + P.dim * 0.15;
 
     for (let i = P.transients.length - 1; i >= 0; i--) {

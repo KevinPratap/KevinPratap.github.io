@@ -1,0 +1,522 @@
+// Ferrum: a powered-armor tech hero. Repulsor blasts from the palm, a
+// targeting HUD, homing missile volleys, palm thrusters for flight, and a
+// suit-up sequence that recolors and boosts everything.
+import { CONFIG, CHARACTERS } from '../config.js';
+import { Post } from '../render/pipeline.js';
+import { FXQuad } from '../render/objects.js';
+import { clamp, rand, pick, TAU, damp, lerp, easeOutCubic } from '../util.js';
+
+const CH = CHARACTERS.ferrum;
+const CYAN = [[0.25, 0.85, 1], [0.6, 0.95, 1], [0.9, 1, 1], [0.15, 0.6, 1]];
+const GOLD = [[1, 0.7, 0.2], [1, 0.85, 0.4], [1, 0.96, 0.75], [1, 0.45, 0.12]];
+const SUIT_TIME = 25;
+
+function toEdge(x, y, dx, dy, pad = 60) {
+  const W = window.innerWidth + pad, H = window.innerHeight + pad;
+  let t = 1e9;
+  if (dx > 0) t = Math.min(t, (W - x) / dx); else if (dx < 0) t = Math.min(t, (-pad - x) / dx);
+  if (dy > 0) t = Math.min(t, (H - y) / dy); else if (dy < 0) t = Math.min(t, (-pad - y) / dy);
+  if (!isFinite(t) || t > 1e8) t = 0;
+  return { x: x + dx * t, y: y + dy * t, len: t };
+}
+
+export class Ferrum {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.ch = CH;
+    const S = ctx.scene;
+    this.slots = {};
+    for (const s of ['L', 'R']) {
+      this.slots[s] = {
+        c: 0, cool: 0, callout: 0, fistT: 0, x: 0, y: 0, thr: 0,
+        glow: new FXQuad(S, 'glow', { a: CH.a, b: CH.b, intensity: 0, param: [3.5, 0, 0, 0] }),
+        ring1: new FXQuad(S, 'ring', { a: CH.a, b: CH.b, intensity: 0 }),
+        ring2: new FXQuad(S, 'ring', { a: CH.a, b: CH.b, intensity: 0 }),
+        jet: new FXQuad(S, 'beam', { a: CH.a, b: CH.b, intensity: 0 }),
+      };
+    }
+    this.beams = [];
+    this.missiles = [];
+    this.marks = [];
+    this.timers = [];
+    this.hud = { on: false, k: 0, fist: 0, cool: 0 };
+    this.suit = { on: false, t: 0, hold: 0, cool: 0, glow: new FXQuad(S, 'glow', { a: GOLD[0], b: GOLD[2], intensity: 0, param: [3, 0, 0, 0] }), ring: new FXQuad(S, 'ring', { a: GOLD[0], b: GOLD[2], intensity: 0 }), x: 0, y: 0 };
+    this.thrust = { k: 0, called: 0, alt: 0 };
+    this.power = 0;
+  }
+
+  get gold() { return this.suit.on; }
+  get pal() { return this.suit.on ? GOLD : CYAN; }
+  get cA() { return this.suit.on ? CH.gold : CH.a; }
+  get cB() { return this.suit.on ? CH.goldB : CH.b; }
+  get pow() { return this.suit.on ? 1.35 : 1; }
+
+  enter() {}
+
+  exit() {
+    for (const st of Object.values(this.slots)) {
+      st.c = 0; st.glow.intensity = 0; st.ring1.intensity = 0; st.ring2.intensity = 0; st.jet.intensity = 0;
+    }
+    this.beams.forEach((b) => b.q.dispose());
+    this.beams.length = 0;
+    this.missiles.length = 0;
+    this.marks.length = 0;
+    this.timers.length = 0;
+    this.hud.on = false; this.hud.k = 0;
+    this.suit.on = false; this.suit.glow.intensity = 0; this.suit.ring.intensity = 0;
+    this.thrust.k = 0;
+    this.recolor();
+  }
+
+  recolor() {
+    const cA = this.cA, cB = this.cB;
+    for (const st of Object.values(this.slots)) {
+      for (const q of [st.glow, st.ring1, st.ring2, st.jet]) { q.u.uColorA.value.set(...cA); q.u.uColorB.value.set(...cB); }
+    }
+    if (this.ctx.energy) this.ctx.energy.setColors(cA, cB);
+    this.ctx.overlay.setCharacter({ ...CH, a: cA, b: cB });
+  }
+
+  after(t, fn) { this.timers.push({ t, fn }); }
+
+  spark(x, y, a, speed, o = {}) {
+    return this.ctx.streaks.spawn({
+      x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, drag: o.drag ?? 1.6, grav: o.grav ?? 0,
+      life: o.life ?? rand(0.3, 0.6), c: pick(this.pal), bright: o.bright ?? 2.2,
+      width: o.width ?? rand(1.5, 3), stretch: o.stretch ?? 0.04, fade: 1.2, fn: o.fn,
+    });
+  }
+
+  update(dt, time, hands) {
+    for (let i = this.timers.length - 1; i >= 0; i--) {
+      const t = this.timers[i];
+      t.t -= dt;
+      if (t.t <= 0) { this.timers.splice(i, 1); t.fn(); }
+    }
+    const L = hands.L, R = hands.R;
+    const levels = [0.32, 0.32];
+    const suitBusy = this.updateSuit(L, R, dt, time, levels);
+    const flying = this.updateThrusters(L, R, dt, time, levels);
+    const busy = suitBusy || flying;
+    this.power = 0;
+    for (const [k, h] of [['L', L], ['R', R]]) {
+      const lv = this.updateHand(this.slots[k], h, other(h, L, R), dt, time, busy);
+      levels[k === 'L' ? 0 : 1] = Math.max(levels[k === 'L' ? 0 : 1], lv);
+    }
+    this.updateBeams(dt, time);
+    this.updateMissiles(dt, time);
+    this.updateHud(L, R, dt, time);
+    return levels;
+  }
+
+  // ---------- per hand: Repulsor charge/fire, Missiles, HUD toggle ----------
+  updateHand(st, h, o, dt, time, busy) {
+    const { overlay, sfx, fx } = this.ctx;
+    st.cool -= dt; st.callout -= dt;
+    if (h.present) {
+      st.x = damp(st.x || h.cx, h.cx, 24, dt);
+      st.y = damp(st.y || h.cy, h.cy, 24, dt);
+    }
+
+    // ---- Repulsor ----
+    const down = h.present && h.pts[9].y - h.pts[0].y > h.scale * 0.55;
+    const want = h.present && !busy && h.isOpen && h.still && !down && !h.point && !h.two;
+    const rate = want ? (1 / 0.9) * this.ctx.voice.boost : -1.2;
+    st.c = clamp(st.c + rate * dt, 0, 1);
+    const C = st.c;
+    if (C > 0.02) {
+      const s = h.present ? h.scale : 80;
+      st.glow.set(st.x, st.y, s * (2 + C * 3));
+      st.glow.intensity = (0.25 + C * 0.9) * (0.9 + Math.random() * 0.2);
+      st.glow.tick(time);
+      // rings collapse onto the palm as it charges
+      const r1 = s * (2.3 - 1.5 * C), r2 = s * (1.3 - 0.6 * C);
+      const S1 = r1 / 0.4 + 12, S2 = r2 / 0.4 + 8;
+      st.ring1.set(st.x, st.y, S1); st.ring1.param(r1 / (S1 / 2), 3 / (S1 / 2), 0.04, 0);
+      st.ring1.intensity = 0.9 + C; st.ring1.tick(time);
+      st.ring2.set(st.x, st.y, S2); st.ring2.param(r2 / (S2 / 2), 2 / (S2 / 2), 0.04, 0);
+      st.ring2.intensity = 0.7 + C * 1.2; st.ring2.tick(time + 3);
+      sfx.loop('charge', C * 0.9);
+      this.power = Math.max(this.power, C);
+      Post.wantAura(C * 0.3, this.cA, this.cB);
+      Post.wantZoom(C * 0.03, st.x, st.y);
+      if (Math.random() < dt * 90 * C) {
+        const a = rand(0, TAU), d = s * rand(1.6, 2.6);
+        this.ctx.streaks.spawn({
+          x: st.x + Math.cos(a) * d, y: st.y + Math.sin(a) * d, vx: -Math.cos(a) * d * 5, vy: -Math.sin(a) * d * 5,
+          drag: 0, life: 0.2, c: pick(this.pal), bright: 2, width: 2, stretch: 0.06, fade: 0.8,
+        });
+      }
+      if (C > 0.6 && st.callout <= 0) {
+        overlay.callout('光線砲', 'Repulsor Blast');
+        this.ctx.onMove(0);
+        sfx.play('lock');
+        st.callout = 3;
+        Post.flashScreen(0.08, this.cB);
+      }
+    } else {
+      st.glow.intensity = 0; st.ring1.intensity = 0; st.ring2.intensity = 0;
+    }
+    if (h.present && C > 0.25 && !busy) {
+      if (h.flick) this.fireRepulsor(h, C, false);
+      else if (h.thrust) this.fireRepulsor(h, C, true);
+    }
+
+    // ---- Missile Volley: two fingers up, then flick ----
+    if (h.present && h.two && h.flick && st.cool <= 0 && !busy) {
+      st.cool = 1.2;
+      this.launch(h);
+    }
+
+    // ---- HUD toggle: hold a fist ----
+    const fistAlone = h.present && h.fist && !(o.present && o.fist && Math.hypot(o.cx - h.cx, o.cy - h.cy) / h.scale < CONFIG.touchDist * 1.5);
+    st.fistT = fistAlone && h.still ? st.fistT + dt : 0;
+    if (st.fistT > 0.55 && this.hud.cool <= 0) {
+      this.hud.cool = 1.2;
+      st.fistT = 0;
+      this.toggleHud();
+    }
+    return 0.32 + C * 1.4;
+  }
+
+  // ---------- Repulsor firing ----------
+  fireRepulsor(h, C, camera) {
+    const { fx, sfx, overlay, scene } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
+    const st = this.slots[h.slot];
+    const x = st.x, y = st.y;
+    const pw = (0.6 + C * 0.9) * this.pow * this.ctx.voice.power;
+    st.c = 0;
+    Post.freeze(0.06);
+    Post.shake(0.45 + pw * 0.25);
+    Post.aberrate(8 + 5 * pw);
+    Post.bloom(1.4 + pw);
+    Post.flashScreen(0.2 + 0.1 * pw, this.cB);
+    Post.shockwave({ x, y, speed: 1400, width: 70, strength: 22 + 12 * pw, life: 0.55 });
+    fx.ring({ x, y, r0: h.scale * 0.6, r1: h.scale * (3 + 2 * pw), dur: 0.35, width: 12, a: this.cA, b: this.cB, intensity: 2.2 });
+    fx.glow({ x, y, s0: h.scale * 2, s1: h.scale * 8, dur: 0.22, a: this.cA, b: [1, 1, 1], intensity: 2.8 });
+    if (camera) {
+      // straight at the lens: a flare and a tunnel of rings
+      Post.punch(2.4, x, y);
+      Post.impact(0.09, this.cB);
+      Post.flashScreen(0.6, this.cB);
+      for (let i = 0; i < 4; i++) this.after(i * 0.06, () => fx.ring({ x, y, r0: h.scale, r1: diag * 0.9, dur: 0.5, width: 20, a: this.cA, b: this.cB, noise: 0.06, intensity: 1.8 }));
+      for (let i = 0; i < 80; i++) this.spark(x, y, rand(0, TAU), rand(1400, 3400), { life: rand(0.2, 0.45), drag: 0 });
+      overlay.speedLines(1, x, y);
+    } else {
+      const d = h.dir();
+      let dx = d.x, dy = d.y;
+      if (Math.hypot(dx, dy) < 0.2) { dx = h.pts[9].x - h.pts[0].x; dy = h.pts[9].y - h.pts[0].y; }
+      const m = Math.hypot(dx, dy) || 1;
+      dx /= m; dy /= m;
+      const e = toEdge(x, y, dx, dy, 60);
+      const q = new FXQuad(scene, 'beam', { a: this.cA, b: this.cB, intensity: 2.2 });
+      this.beams.push({ q, x, y, dx, dy, len: e.len, w: h.scale * (0.55 + 0.6 * pw), t: 0, life: 0.55, ex: e.x, ey: e.y, boltT: 0 });
+      Post.punch(-1.2, x, y);
+      for (let i = 1; i <= 4; i++) {
+        fx.ring({ x: x + dx * h.scale * i * 1.1, y: y + dy * h.scale * i * 1.1, r0: h.scale * 0.35, r1: h.scale * (1.4 - i * 0.2), dur: 0.3 + i * 0.05, width: 6, a: this.cA, b: this.cB, intensity: 1.8 });
+      }
+      for (let i = 0; i < 46; i++) this.spark(x, y, Math.atan2(dy, dx) + rand(-0.25, 0.25), rand(1500, 3200), { life: rand(0.15, 0.3), drag: 1, width: rand(1.5, 3) });
+    }
+    sfx.play('repulsor');
+    overlay.callout('光線砲', 'Repulsor Blast', { big: camera || pw > 1.2, dur: 1.1 });
+    st.cool = Math.max(st.cool, 0.4);
+  }
+
+  updateBeams(dt, time) {
+    for (let i = this.beams.length - 1; i >= 0; i--) {
+      const b = this.beams[i];
+      b.t += dt;
+      const k = b.t / b.life;
+      const w = b.w * (k < 0.12 ? 1.5 : 1.5 * Math.pow(1 - (k - 0.12) / 0.88, 1.4));
+      b.q.set(b.x + b.dx * b.len / 2, b.y + b.dy * b.len / 2, b.len, Math.max(w, 1), Math.atan2(b.dy, b.dx));
+      b.q.param(1, 1, 0, 0);
+      b.q.intensity = 2.3 * (1 - k);
+      b.q.tick(time);
+      Post.wantDim(0.4 * (1 - k));
+      b.boltT -= dt;
+      if (b.boltT <= 0 && k < 0.7) {
+        b.boltT = 0.04;
+        // hex-pulse rings running down the beam
+        const d = (b.t * 2600) % b.len;
+        const px = b.x + b.dx * d, py = b.y + b.dy * d;
+        this.ctx.lines.spawn(px - b.dy * w * 0.6, py + b.dx * w * 0.6, px + b.dy * w * 0.6, py - b.dx * w * 0.6, 3, this.pal[1], 2.2, 0.05);
+      }
+      if (b.t >= b.life * 0.25 && !b.hit) {
+        b.hit = true;
+        const x = clamp(b.ex, 0, window.innerWidth), y = clamp(b.ey, 0, window.innerHeight);
+        this.boom(x, y, 1.1 + b.w / 100, true);
+      }
+      if (b.t >= b.life) { b.q.dispose(); this.beams.splice(i, 1); }
+    }
+  }
+
+  boom(x, y, power = 1, beamEnd = false) {
+    const { fx, sfx } = this.ctx;
+    const base = Math.min(window.innerWidth, window.innerHeight);
+    fx.glow({ x, y, s0: base * 0.05, s1: base * 0.5 * power, dur: 0.3, a: this.cA, b: [1, 1, 1], intensity: 2.6 });
+    fx.ring({ x, y, r0: 10, r1: base * 0.32 * power, dur: 0.4, width: 12, a: this.cA, b: this.cB, noise: 0.15, intensity: 2 });
+    Post.shockwave({ x, y, speed: 1100, width: 60, strength: 18 * power, life: 0.5 });
+    Post.shake(beamEnd ? 0.35 : 0.14);
+    Post.aberrate(beamEnd ? 8 : 4);
+    for (let i = 0; i < 26 * power; i++) this.spark(x, y, rand(0, TAU), rand(300, 1400) * power, { life: rand(0.2, 0.5) });
+    if (!beamEnd) sfx.play('crack');
+  }
+
+  // ---------- Missile Volley ----------
+  launch(h) {
+    const { overlay, sfx, particles } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
+    const d = h.dir();
+    let ax = d.x, ay = d.y;
+    if (Math.hypot(ax, ay) < 0.2) { ax = 0; ay = -1; }
+    const am = Math.hypot(ax, ay); ax /= am; ay /= am;
+    const N = 7;
+    overlay.callout('追尾弾', 'Missile Volley', { big: true, dur: 1.3 });
+    sfx.play('missile');
+    Post.shake(0.4);
+    Post.aberrate(6);
+    Post.flashScreen(0.12, this.cB);
+    this.ctx.onMove(2);
+    for (let i = 0; i < N; i++) {
+      // targets land in a spread around the flick direction
+      const a = Math.atan2(ay, ax) + (i - (N - 1) / 2) * 0.24 + rand(-0.06, 0.06);
+      const dist = diag * rand(0.32, 0.6);
+      const tx = clamp(h.cx + Math.cos(a) * dist, W * 0.05, W * 0.95), ty = clamp(h.cy + Math.sin(a) * dist, H * 0.06, H * 0.9);
+      // launch sideways off the hand, then curve in
+      const la = Math.atan2(ay, ax) + (i - (N - 1) / 2) * 0.55 + rand(-0.1, 0.1) + (Math.random() < 0.5 ? 0.5 : -0.5);
+      this.after(i * 0.07, () => {
+        this.missiles.push({ x: h.tipX ?? h.cx, y: h.tipY ?? h.cy, a: la, sp: 500, tx, ty, t: 0, life: 2.4 });
+        this.ctx.overlay.reticle(tx, ty, 90);
+        sfx.play('lock');
+        particles.spawn({ x: h.cx, y: h.cy, life: 0.2, c: this.pal[2], bright: 2, size: 60, size1: 10, fade: 1 });
+      });
+    }
+  }
+
+  updateMissiles(dt, time) {
+    const { particles, streaks } = this.ctx;
+    for (let i = this.missiles.length - 1; i >= 0; i--) {
+      const m = this.missiles[i];
+      m.t += dt;
+      const want = Math.atan2(m.ty - m.y, m.tx - m.x);
+      let da = want - m.a;
+      while (da > Math.PI) da -= TAU;
+      while (da < -Math.PI) da += TAU;
+      // turn rate tightens over time so they always find the target
+      const turn = 3.2 + m.t * 6;
+      m.a += clamp(da, -turn * dt, turn * dt);
+      m.sp = Math.min(2500, m.sp + 3600 * dt);
+      const vx = Math.cos(m.a) * m.sp, vy = Math.sin(m.a) * m.sp;
+      m.x += vx * dt; m.y += vy * dt;
+      // hot head, white smoke trail
+      streaks.spawn({ x: m.x, y: m.y, vx, vy, life: 0.09, c: this.pal[2], bright: 3, width: 5, stretch: 0.035, fade: 1 });
+      particles.spawn({ x: m.x, y: m.y, vx: rand(-40, 40) - vx * 0.05, vy: rand(-40, 40) - vy * 0.05, drag: 1.4, life: rand(0.5, 0.9), c: [0.9, 0.95, 1], bright: 0.3, size: 12, size1: 46, fade: 1.3 });
+      if (Math.random() < 0.5) particles.spawn({ x: m.x, y: m.y, life: 0.25, c: pick(this.pal), bright: 1.4, size: 9, size1: 2, fade: 1 });
+      if (Math.hypot(m.tx - m.x, m.ty - m.y) < 34 || m.t > m.life) {
+        this.boom(m.x, m.y, 0.9);
+        this.missiles.splice(i, 1);
+      }
+    }
+    if (this.missiles.length) this.ctx.sfx.loop('roar', 0.2);
+  }
+
+  // ---------- HUD ----------
+  toggleHud() {
+    const h = this.hud;
+    h.on = !h.on;
+    const { overlay, sfx, fx } = this.ctx;
+    sfx.play('hud');
+    Post.flashScreen(0.15, this.cB);
+    Post.aberrate(6);
+    Post.glitchFor(0.3);
+    overlay.callout('戦術', h.on ? 'HUD Online' : 'HUD Offline');
+    if (h.on) this.ctx.onMove(1);
+    fx.ring({ x: window.innerWidth / 2, y: window.innerHeight / 2, r0: 10, r1: Math.hypot(window.innerWidth, window.innerHeight) * 0.5, dur: 0.5, width: 8, a: this.cA, b: this.cB, intensity: 1.4 });
+  }
+
+  updateHud(L, R, dt, time) {
+    const h = this.hud;
+    h.cool -= dt;
+    h.k = damp(h.k, h.on ? 1 : 0, 6, dt);
+    if (h.k < 0.01) return;
+    const targets = [];
+    for (const hh of [L, R]) {
+      if (!hh.present) continue;
+      targets.push({ x: hh.cx, y: hh.cy, r: hh.scale * 0.85, lock: hh.still ? clamp(hh.stillTime / 0.9, 0, 1) : 0.15, label: hh.slot === 'L' ? 'HAND-L' : 'HAND-R' });
+    }
+    for (const m of this.missiles) targets.push({ x: m.tx, y: m.ty, r: 34, lock: clamp(m.t / 0.6, 0, 1), label: 'TGT' });
+    const bar = (v) => '▮'.repeat(Math.round(v * 8)).padEnd(8, '▯');
+    this.ctx.overlay.setHud({
+      k: h.k, gold: this.suit.on, targets,
+      power: this.suit.on ? 1 : Math.max(0.35, this.power),
+      alt: this.thrust.alt,
+      lines: [
+        this.suit.on ? 'MK-Ω  ARMORED' : 'MK-Ω  ONLINE',
+        `REPULSOR  ${bar(this.power)}`,
+        `THRUSTERS ${this.thrust.k > 0.3 ? 'ACTIVE' : 'STANDBY'}`,
+        `MISSILES  ${this.missiles.length ? `IN FLIGHT ${this.missiles.length}` : 'READY'}`,
+      ],
+    });
+    Post.wantEdge(0.1 * h.k, this.cA);
+    Post.wantDim(0.06 * h.k);
+  }
+
+  // ---------- Thrusters ----------
+  updateThrusters(L, R, dt, time, levels) {
+    const t = this.thrust;
+    const { overlay, sfx } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight;
+    const ok = (h) => h.present && h.isOpen && h.pts[9].y - h.pts[0].y > h.scale * 0.6;
+    const on = ok(L) && ok(R);
+    t.k = damp(t.k, on ? 1 : 0, on ? 4 : 6, dt);
+    if (t.k < 0.004) {
+      t.k = 0;
+      for (const st of Object.values(this.slots)) st.jet.intensity = 0;
+      return false;
+    }
+    const k = t.k;
+    if (k > 0.6 && !t.called) {
+      t.called = 1;
+      overlay.callout('飛行', 'Thrusters');
+      sfx.play('repulsor');
+      this.ctx.onMove(3);
+      Post.flashScreen(0.2, this.cB);
+      Post.shake(0.5);
+    }
+    if (!on) t.called = k > 0.2 ? t.called : 0;
+    t.alt += dt * 60 * k;
+    for (const h of [L, R]) {
+      if (!h.present) continue;
+      const st = this.slots[h.slot];
+      const len = H * (0.28 + 0.12 * k);
+      st.jet.set(h.cx, h.cy + len / 2, len, Math.max(h.scale * 1.1, 1), Math.PI / 2);
+      st.jet.param(0.4, 0.6, 0, 0);
+      st.jet.intensity = 1.4 * k;
+      st.jet.tick(time);
+      const n = Math.floor(120 * k * dt + Math.random());
+      for (let i = 0; i < n; i++) {
+        this.ctx.streaks.spawn({
+          x: h.cx + rand(-h.scale * 0.35, h.scale * 0.35), y: h.cy + h.scale * 0.2, vx: rand(-90, 90), vy: rand(1100, 2000),
+          drag: 0.4, life: rand(0.18, 0.4), c: pick(this.pal), bright: 2, width: rand(2, 5), stretch: 0.05, fade: 1,
+        });
+      }
+      if (Math.random() < dt * 40 * k) {
+        this.ctx.particles.spawn({ x: h.cx, y: h.cy + h.scale, vx: rand(-60, 60), vy: rand(200, 500), drag: 1, life: rand(0.5, 0.9), c: [0.9, 0.95, 1], bright: 0.25, size: 20, size1: 70, fade: 1.3 });
+      }
+    }
+    // you are rising: the world drifts down, the camera leans in
+    Post.wantZoom(0.045 * k, W / 2, H * 0.6);
+    Post.shake(dt * 0.7 * k);
+    Post.wantAura(0.5 * k, this.cA, this.cB);
+    Post.wantEdge(0.2 * k, this.cA);
+    overlay.speedLines(0.35 * k, W / 2, H * 0.3);
+    sfx.loop('jet', k);
+    levels[0] = Math.max(levels[0], 0.9 + k * 0.5);
+    levels[1] = Math.max(levels[1], 0.9 + k * 0.5);
+    return true;
+  }
+
+  // ---------- Suit-Up ----------
+  updateSuit(L, R, dt, time, levels) {
+    const s = this.suit;
+    const { overlay, sfx, fx, streaks } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
+    s.cool -= dt;
+    let hold = false;
+    if (L.present && R.present && L.fist && R.fist) {
+      const sc = (L.scale + R.scale) / 2;
+      if (Math.hypot(L.cx - R.cx, L.cy - R.cy) / sc < CONFIG.touchDist * 1.4) {
+        hold = true;
+        s.hx = (L.cx + R.cx) / 2; s.hy = (L.cy + R.cy) / 2; s.hs = sc;
+      }
+    }
+    s.hold = hold && s.cool <= 0 ? s.hold + dt * this.ctx.voice.boost : Math.max(0, s.hold - dt * 2);
+    if (s.hold > 0.02) {
+      const c = clamp(s.hold / 1.0, 0, 1);
+      s.glow.set(s.hx, s.hy, s.hs * (3 + c * 5));
+      s.glow.intensity = (0.4 + c) * 1.1;
+      s.glow.tick(time);
+      const r = s.hs * (3.2 - 2 * c), S = r / 0.4 + 12;
+      s.ring.set(s.hx, s.hy, S); s.ring.param(r / (S / 2), 3 / (S / 2), 0.05, 0);
+      s.ring.intensity = 1 + c; s.ring.tick(time);
+      sfx.loop('charge', c);
+      Post.wantZoom(c * 0.04, s.hx, s.hy);
+      Post.shake(dt * c * 0.8);
+      if (Math.random() < dt * 80 * c) this.spark(s.hx + rand(-1, 1) * s.hs * 2, s.hy + rand(-1, 1) * s.hs * 2, rand(0, TAU), rand(200, 600), { life: 0.3 });
+      if (s.hold >= 1.0) this.suitUp(s.hx, s.hy);
+    } else {
+      s.glow.intensity = s.on ? 0 : 0;
+      s.ring.intensity = 0;
+    }
+    if (s.on) {
+      s.t += dt;
+      // arc reactor glowing on the chest
+      const rx = W / 2, ry = H * 0.64;
+      s.glow.set(rx, ry, Math.min(W, H) * 0.32);
+      s.glow.intensity = 0.55 + Math.sin(time * 5) * 0.06;
+      s.glow.tick(time);
+      Post.wantAura(0.55 * clamp((SUIT_TIME - s.t) / 2, 0, 1), this.cA, this.cB);
+      Post.wantEdge(0.15, this.cA);
+      levels[0] = Math.max(levels[0], 0.9);
+      levels[1] = Math.max(levels[1], 0.9);
+      if (s.t > SUIT_TIME) this.suitDown();
+    }
+    return s.hold > 0.05;
+  }
+
+  suitUp(x, y) {
+    const s = this.suit;
+    const { overlay, sfx, fx, streaks } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
+    s.hold = 0; s.cool = 2; s.on = true; s.t = 0;
+    this.recolor();
+    const cx = W / 2, cy = H * 0.58;
+    overlay.callout('装着', 'Suit-Up', { big: true, dur: 1.9 });
+    sfx.play('suit');
+    // armor plates fly in from all sides and lock onto the body
+    for (let i = 0; i < 34; i++) {
+      const a = (i / 34) * TAU + rand(-0.1, 0.1);
+      const sx = cx + Math.cos(a) * diag * 0.7, sy = cy + Math.sin(a) * diag * 0.7;
+      const tx = cx + rand(-0.16, 0.16) * W, ty = cy + rand(-0.3, 0.3) * H;
+      const d = Math.hypot(tx - sx, ty - sy);
+      const sp = rand(2200, 3400);
+      this.after(rand(0, 0.55), () => {
+        streaks.spawn({ x: sx, y: sy, vx: ((tx - sx) / d) * sp, vy: ((ty - sy) / d) * sp, drag: 0, life: d / sp, c: pick(GOLD), bright: 3, width: rand(6, 14), stretch: 0.03, fade: 0.3 });
+        this.after(d / sp, () => {
+          fx.ring({ x: tx, y: ty, r0: 4, r1: 60, dur: 0.25, width: 6, a: GOLD[0], b: GOLD[2], intensity: 1.6 });
+          for (let k = 0; k < 6; k++) this.spark(tx, ty, rand(0, TAU), rand(150, 500), { life: 0.25, width: 2 });
+          Post.shake(0.05);
+        });
+      });
+    }
+    this.after(0.9, () => {
+      Post.impact(0.12, GOLD[2]);
+      Post.flashScreen(0.7, GOLD[2]);
+      Post.freeze(0.1);
+      Post.shake(1);
+      Post.punch(2.2, cx, cy);
+      Post.aberrate(14);
+      Post.bloom(2.4);
+      Post.shockwave({ x: cx, y: cy, speed: 1700, width: 110, strength: 52, life: 0.9 });
+      fx.ring({ x: cx, y: cy, r0: 20, r1: diag * 0.8, dur: 0.8, width: 36, a: GOLD[0], b: GOLD[2], noise: 0.1, intensity: 2.4 });
+      fx.glow({ x: cx, y: cy, s0: 80, s1: diag, dur: 0.55, a: GOLD[0], b: [1, 1, 1], intensity: 3.2 });
+      overlay.crack(cx, cy, 1.2);
+      for (let i = 0; i < 160; i++) this.spark(cx, cy, rand(0, TAU), rand(600, 2400), { life: rand(0.3, 0.8), width: rand(2, 4) });
+    });
+    this.ctx.onMove(4);
+  }
+
+  suitDown() {
+    const s = this.suit;
+    s.on = false;
+    this.recolor();
+    this.ctx.sfx.play('collapse');
+    this.ctx.overlay.callout('鋼', 'Suit Offline', { dur: 0.9 });
+    Post.flashScreen(0.2, CH.b);
+    s.glow.intensity = 0;
+    s.glow.u.uColorA.value.set(...GOLD[0]);
+  }
+}
+
+function other(h, L, R) { return h === L ? R : L; }
