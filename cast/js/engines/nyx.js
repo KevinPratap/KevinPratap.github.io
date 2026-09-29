@@ -78,6 +78,8 @@ export class Nyx {
     this.motes.length = 0;
     this.forces.length = 0;
     this.timers.length = 0;
+    if (this.zg) { this.zg.on = false; this.zg.t = 0; this.zg.crush = 0; }
+    if (this.ctx.phys) this.ctx.phys.gscale = 1;
   }
 
   moveMote(p, dt) {
@@ -149,10 +151,84 @@ export class Nyx {
       if (t.t <= 0) { this.timers.splice(i, 1); t.fn(); }
     }
     const levels = [0.3, 0.3];
+    this.updateZeroG(hands, dt, time, levels);
     const singActive = this.updateSing(hands, dt, time, levels);
     levels[0] = Math.max(levels[0], this.updateHand(this.slots.L, hands.L, dt, time, singActive));
     levels[1] = Math.max(levels[1], this.updateHand(this.slots.R, hands.R, dt, time, singActive));
     return levels;
+  }
+
+  // ---------- Zero Gravity + Crush ----------
+  // Both palms open and apart, held still: gravity lets go and the floor's
+  // rubble drifts up. Slam both fists down and it comes back ten times heavier.
+  updateZeroG(hands, dt, time, levels) {
+    const z = this.zg || (this.zg = { on: false, t: 0, away: 0, crush: 0, spawnT: 0, ringT: 0, cool: 0 });
+    const { phys, overlay, sfx, fx } = this.ctx;
+    const L = hands.L, R = hands.R, W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    z.cool -= dt;
+    const both = L.present && R.present;
+    let want = false, sc = 80, mx = W / 2, my = H / 2;
+    if (both) {
+      sc = (L.scale + R.scale) / 2; mx = (L.cx + R.cx) / 2; my = (L.cy + R.cy) / 2;
+      const d = Math.hypot(L.cx - R.cx, L.cy - R.cy) / sc;
+      want = L.isOpen && R.isOpen && d > 3 && d < 12 && Math.abs(L.cy - R.cy) < sc * 1.4 && L.speed < 3 && R.speed < 3;
+    }
+    if (!z.on) {
+      z.t = want && z.cool <= 0 ? z.t + dt : 0;
+      if (z.t > 0.5) {
+        z.on = true; z.t = 0; z.away = 0; z.spawnT = 0;
+        overlay.callout('無重力', 'Zero Gravity', { big: true });
+        this.ctx.onMove(5);
+        sfx.play('singularity', 0.8);
+        Post.flashScreen(0.4, [0.8, 0.6, 1]); Post.shockwave({ x: mx, y: my, speed: 900, width: 90, strength: -24, life: 0.8 }); Post.bloom(1.5);
+        phys.blast(mx, H, base * 0.9, 1500);
+      }
+    } else {
+      z.away = both ? 0 : z.away + dt;
+      if (z.away > 0.9 || z.crush > 0) {
+        // let go gently
+        if (z.crush <= 0) { z.on = false; z.cool = 1; }
+      }
+    }
+    if (z.crush > 0) {
+      z.crush -= dt;
+      phys.gscale = 4.5;
+      if (z.crush <= 0) { phys.gscale = 1; z.on = false; z.cool = 1.5; }
+      return;
+    }
+    if (!z.on) { phys.gscale = damp(phys.gscale, 1, 3, dt); return; }
+    // floating
+    phys.gscale = damp(phys.gscale, -0.1, 4, dt);
+    z.spawnT -= dt;
+    if (z.spawnT <= 0) {
+      z.spawnT = 0.05;
+      phys.shard(rand(0.03, 0.97) * W, H * 0.98, rand(-40, 40), -rand(180, 520), pick(['rock', 'glass', 'rock', 'steel']), rand(9, 22), { hot: 0 });
+    }
+    for (const s of phys.shards) { s.vx *= 1 - dt * 0.7; s.vy *= 1 - dt * 0.35; s.vr += Math.sin(time * 2 + s.x) * dt * 2; }
+    z.ringT -= dt;
+    if (z.ringT <= 0 && both) {
+      z.ringT = 0.45;
+      fx.ring({ x: mx, y: my, r0: sc, r1: base * 0.7, dur: 0.9, width: 6, a: CH.a, b: CH.b, intensity: 1.1 });
+    }
+    Post.wantAura(0.3, CH.a, CH.b);
+    Post.wantDim(0.25);
+    Post.wantZoom(-0.02, mx, my);
+    levels[0] = Math.max(levels[0], 1); levels[1] = Math.max(levels[1], 1);
+    // the crush: both fists driven down
+    if (both && L.fist && R.fist && (L.vy + R.vy) / 2 / sc > CONFIG.slamSpeed * 0.7) {
+      z.crush = 0.8;
+      phys.gscale = 4.5;
+      for (const s of phys.shards) s.vy += 900;
+      const cx = mx, cy = Math.min(H * 0.9, my + sc * 2);
+      Post.impact(0.16, [0.8, 0.6, 1]); Post.flashScreen(0.7, [0.85, 0.7, 1]); Post.freeze(0.12); Post.shake(1);
+      Post.punch(2.2, cx, cy); Post.aberrate(16); Post.bloom(2.5);
+      Post.shockwave({ x: cx, y: H * 0.95, speed: 1500, width: 90, strength: 40, life: 0.8 });
+      fx.ring({ x: cx, y: H * 0.95, r0: 10, r1: W * 0.7, dur: 0.6, width: 22, a: CH.a, b: CH.b, intensity: 2 });
+      overlay.callout('重圧', 'Crush', { big: true });
+      overlay.crack(cx, H * 0.95, 1.5);
+      overlay.sfxText('DOGOOM!', cx, H * 0.55, 1.4, [200, 170, 255]);
+      sfx.play('thud', 1.6);
+    }
   }
 
   // ---------- Pull + Push ----------

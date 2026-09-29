@@ -72,6 +72,7 @@ export const CHARACTERS = {
       { id: 'nova', kanji: '爆炎', name: 'Nova Burst', how: 'Bring both hands together, then rip them apart.' },
       { id: 'wall', kanji: '炎壁', name: 'Wall of Flame', how: 'Open both hands wide at the same height and hold.' },
       { id: 'dragon', kanji: '火龍', name: 'Dragon Fire', how: 'Point a finger and hold it. Aim the stream anywhere.' },
+      { id: 'tornado', kanji: '火災旋風', name: 'Fire Tornado', how: 'Hold up two fingers, still. A flame tornado rises off the floor and follows your hand, hauling rubble up its spiral.' },
     ],
   },
   nyx: {
@@ -88,6 +89,7 @@ export const CHARACTERS = {
       { id: 'sing', kanji: '特異点', name: 'Singularity', how: 'Bring both hands together and hold.' },
       { id: 'portal', kanji: '虚空門', name: 'Portal', how: 'Keep holding the Singularity for 3 seconds.' },
       { id: 'rift', kanji: '空間斬', name: 'Rift Cut', how: 'Point a finger and slash it across the air.' },
+      { id: 'zerog', kanji: '無重力', name: 'Zero Gravity', how: 'Hold both palms open and apart, still. Gravity lets go and rubble floats. Slam both fists down to crush it all.' },
     ],
   },
   raiju: {
@@ -124,6 +126,7 @@ export const CHARACTERS = {
       { id: 'barrage', kanji: '気弾連射', name: 'Ki Barrage', how: 'Flick open palms fast, again and again.' },
       { id: 'awaken', kanji: '覚醒', name: 'Awakening', how: 'Clench both fists and hold. Powers up every move.' },
       { id: 'step', kanji: '瞬歩', name: 'Instant Step', how: 'Hold up two fingers, still, for a moment.' },
+      { id: 'disc', kanji: '気円斬', name: 'Destructo Disc', how: 'Point a finger and hold. A spinning disc forms. Flick to throw it and slice through the room.' },
     ],
   },
   kage: {
@@ -178,11 +181,11 @@ export const CHARACTERS = {
       { id: 'missile', kanji: '追尾弾', name: 'Missile Volley', how: 'Two fingers up, then flick.' },
       { id: 'thrusters', kanji: '飛行', name: 'Thrusters', how: 'Both palms open, fingers pointing down.' },
       { id: 'suit', kanji: '装着', name: 'Suit-Up', how: 'Bring both fists together and hold. Powers up every move.' },
-      { id: 'holo', kanji: '設計図神導', name: 'Holo Schematic', how: 'Pinch with both hands and pull apart. The reactor comes apart layer by layer. Tilt your hands to spin it.' },
+      { id: 'holo', kanji: '設計図', name: 'Holo Schematic', how: 'Pinch with both hands and pull apart. The reactor comes apart layer by layer. Tilt your hands to spin it.' },
       { id: 'unibeam', kanji: '胸部砲', name: 'Unibeam', how: 'Both palms open side by side, held still. Move your hands to steer the beam.' },
     ],
   },
 };
 
 // Characters for the Google Fonts subset request (only these glyphs download).
-export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着十風手裏剣胸部砲変わり設計図神導'))).join('');
+export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着十風手裏剣胸部砲変わり設計図神導重圧円災旋風'))).join('');

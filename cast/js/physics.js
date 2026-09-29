@@ -26,6 +26,7 @@ export class Physics {
     this.orbs = [];
     this.wells = [];
     this.gravity = 1900;
+    this.gscale = 1;
     this.max = 220;
     this.maxOrbs = 520;
   }
@@ -34,6 +35,7 @@ export class Physics {
     this.shards.length = 0;
     this.orbs.length = 0;
     this.wells.length = 0;
+    this.gscale = 1;
   }
 
   // ---------- spawning ----------
@@ -124,7 +126,7 @@ export class Physics {
         const s = this.shards[i];
         const K = KINDS[s.kind];
         s.age += h;
-        s.vy += this.gravity * h * (this.wells.length ? 0.22 : 1);
+        s.vy += this.gravity * this.gscale * h * (this.wells.length ? 0.22 : 1);
         for (const w of wells(this)) this.pull(s, w, h, 1);
         for (const w of wind) {
           const dx = s.x - w.x, dy = s.y - w.y, d = Math.hypot(dx, dy);

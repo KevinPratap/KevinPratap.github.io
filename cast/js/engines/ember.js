@@ -36,6 +36,7 @@ export class Ember {
     this.wall = { level: 0, on: false, t: 0, off: 0, x: 0, y: 0, w: 0, sc: 80,
       quad: new FXQuad(S, 'flameWall', { intensity: 0 }), heat: null };
     this.lines = { t: 0, x: 0, y: 0 };
+    this.tor = { on: false, k: 0, x: 0, heat: null, shardT: 0, fxT: 0, cool: 0 };
   }
 
   enter() {
@@ -58,6 +59,7 @@ export class Ember {
     release(this.wall.heat); this.wall.heat = null;
     this.projectiles.forEach((p) => this.disposeProjectile(p));
     this.projectiles.length = 0;
+    this.tor.on = false; this.tor.k = 0; release(this.tor.heat); this.tor.heat = null;
   }
 
   update(dt, time, hands) {
@@ -66,6 +68,7 @@ export class Ember {
     levels[1] = this.updateHand(this.slots.R, hands.R, dt, time);
     this.updateNova(hands, dt, time);
     this.updateWall(hands, dt, time, levels);
+    this.updateTornado(hands, dt, time, levels);
     this.updateProjectiles(dt, time);
     this.ambient(dt);
     if (this.lines.t > 0) {
@@ -485,6 +488,85 @@ export class Ember {
       levels[0] = Math.max(levels[0], 0.5 + w.level);
       levels[1] = Math.max(levels[1], 0.5 + w.level);
     }
+  }
+
+  // ---------- Fire Tornado ----------
+  // Two fingers up, held: a column of flame climbs off the floor, follows
+  // the hand, and hauls loose debris up its spiral.
+  updateTornado(hands, dt, time, levels) {
+    const T = this.tor, { phys, overlay, sfx, fx } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    T.cool -= dt;
+    const h = [hands.L, hands.R].find((q) => q.present && q.two && q.twoTime > 0.4);
+    if (h && !T.on && T.cool <= 0) {
+      T.on = true; T.x = h.cx; T.heat = Post.source('heat');
+      overlay.callout('火災旋風', 'Fire Tornado', { big: true });
+      this.ctx.onMove(5);
+      sfx.play('boom', 1.2);
+      Post.impact(0.1, [1, 0.8, 0.5]); Post.flashScreen(0.5, [1, 0.7, 0.3]); Post.shake(0.8); Post.bloom(2);
+      Post.shockwave({ x: h.cx, y: H * 0.95, speed: 1200, width: 80, strength: 30, life: 0.7 });
+      phys.blast(h.cx, H * 0.95, base * 0.6, 2200);
+      phys.burst(h.cx, H * 0.95, 22, 'rock', { speed: 900, size: 14, up: 500, hot: 0.8, kinds: ['rock', 'wood'], dir: -Math.PI / 2, cone: 2.6 });
+    }
+    if (T.on && !h && T.k < 0.03) {
+      T.on = false; T.cool = 1; release(T.heat); T.heat = null;
+    }
+    T.k = damp(T.k, h ? 1 : 0, h ? 3 : 2.2, dt);
+    if (!T.on) return;
+    const k = T.k;
+    if (h) T.x = damp(T.x, h.cx, 5, dt);
+    T.top = h ? clamp(h.cy - h.scale * 1.6, -30, H * 0.45) : T.top ?? H * 0.2;
+    const bot = H * 0.97, top = T.top, span = bot - top;
+    const rAt = (f) => base * (0.035 + 0.17 * f * f + 0.02 * Math.sin(time * 3 + f * 6));
+    const sway = (f) => Math.sin(time * 2.2 + f * 5) * base * 0.05 * f;
+    // the flame body: spiral particles and tangential streaks
+    const n = Math.floor(70 * k);
+    for (let i = 0; i < n; i++) {
+      const f = Math.random(), y = lerp(bot, top, f), r = rAt(f);
+      const a = time * (9 - f * 3) + Math.random() * TAU;
+      const px = T.x + sway(f) + Math.cos(a) * r;
+      this.ember(px, y, { vx: -Math.sin(a) * r * 3, vy: -rand(80, 260), life: rand(0.25, 0.6), size: rand(8, 18) * (0.6 + f), bright: 2 });
+      if (i % 3 === 0) this.spark(px, y, Math.atan2(Math.cos(a) * 0.4, -Math.sin(a)) + rand(-0.2, 0.2), rand(500, 1300), { grav: -200, life: rand(0.15, 0.3) });
+    }
+    T.fxT -= dt;
+    if (T.fxT <= 0) {
+      T.fxT = 0.06;
+      for (const f of [0.15, 0.4, 0.62, 0.85]) {
+        fx.glow({ x: T.x + sway(f), y: lerp(bot, top, f), s0: rAt(f) * 2.4, s1: rAt(f) * 3.6, dur: 0.14, a: CH.a, b: CH.b, intensity: 1.5 * k });
+      }
+      fx.glow({ x: T.x, y: bot - span * 0.1, s0: base * 0.2, s1: base * 0.45, dur: 0.2, a: CH.a, b: CH.b, intensity: 1.6 * k });
+      fx.glow({ x: T.x + sway(0.7), y: lerp(bot, top, 0.7), s0: base * 0.25, s1: base * 0.6, dur: 0.2, a: CH.a, b: CH.b, intensity: 1.2 * k });
+      overlay.smoke(T.x + sway(1), top, 1, 1.6, { spread: 0.8, dur: 1.4, vy: -140 });
+      for (let i = 0; i < 4; i++) {
+        const f0 = Math.random(), f1 = Math.min(1, f0 + 0.25);
+        const a0 = time * 8 + f0 * 9, a1 = time * 8 + f1 * 9;
+        this.ctx.lines.spawn(T.x + sway(f0) + Math.cos(a0) * rAt(f0), lerp(bot, top, f0), T.x + sway(f1) + Math.cos(a1) * rAt(f1), lerp(bot, top, f1), 3, CH.a, 1.4 * k, 0.07);
+      }
+    }
+    if (T.heat) { T.heat.x = T.x; T.heat.y = lerp(bot, top, 0.5); T.heat.radius = base * 0.4; T.heat.strength = 3 * k; }
+    // physics: suction, lift, spin
+    for (const s of phys.shards) {
+      if (s.y < top - 60 || s.y > H) continue;
+      const f = clamp((bot - s.y) / span, 0, 1), r = rAt(f);
+      const dx = s.x - (T.x + sway(f));
+      if (Math.abs(dx) > r * 3.2 + 90) continue;
+      const w = 1 - Math.min(1, Math.abs(dx) / (r * 3.2 + 90));
+      s.vx += (-dx * 7 + Math.sin(time * 9 + s.y * 0.03) * r * 14) * dt * k;
+      s.vy -= (2900 + 900 * w) * dt * k * w;
+      s.vr += 30 * dt * k;
+    }
+    T.shardT -= dt;
+    if (T.shardT <= 0 && h) {
+      T.shardT = 0.07;
+      const r = rAt(0.05);
+      phys.shard(T.x + rand(-2.6, 2.6) * r, H * 0.96, rand(-200, 200), -rand(300, 700), pick(['rock', 'wood', 'rock']), rand(9, 18), { hot: 0.8 });
+    }
+    sfx.loop('roar', 0.5 + k * 0.5);
+    Post.wantAura(0.25 * k, CH.a, CH.b);
+    Post.wantDim(0.22 * k);
+    Post.shake(dt * 0.5 * k);
+    levels[0] = Math.max(levels[0], 1 + k * 0.8);
+    levels[1] = Math.max(levels[1], 1 + k * 0.8);
   }
 
   ambient(dt) {

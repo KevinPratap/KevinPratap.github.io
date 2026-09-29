@@ -67,6 +67,7 @@ export class Kai {
     const s = this.sphere;
     s.t = 0; s.on = false; s.level = 0; s.thrown = null; s.orb.intensity = 0;
     this.aw.t = 0; this.aw.awake = 0; this.aw.charging = 0;
+    if (this.disc) { this.disc.ph = 0; this.disc.k = 0; }
     this.ctx.overlay.setCharacter(CH);
     this.bullets.forEach((b) => { b.q.dispose(); b.trail.dispose(); });
     this.bullets.length = 0;
@@ -116,6 +117,7 @@ export class Kai {
     const busySphere = this.updateSphere(hands, dt, time, levels);
     const busyAw = this.updateAwaken(hands, dt, time, levels);
     const busy = busyWave || busySphere || busyAw;
+    this.updateDisc(hands, dt, time, levels);
     this.updateHand(this.slots.L, hands.L, dt, time, busy, levels, 0);
     this.updateHand(this.slots.R, hands.R, dt, time, busy, levels, 1);
     this.updateBullets(dt, time);
@@ -124,6 +126,85 @@ export class Kai {
       this.ctx.overlay.speedLines(Math.min(1, this.lines.t * 3), this.lines.x, this.lines.y);
     }
     return levels;
+  }
+
+  // ---------- Destructo Disc ----------
+  // Point a finger and hold: a razor disc spins up over the tip. Flick to
+  // throw it. It slices whatever it crosses and bursts at the edge.
+  updateDisc(hands, dt, time, levels) {
+    const D = this.disc || (this.disc = { ph: 0, k: 0, x: 0, y: 0, vx: 0, vy: 0, t: 0, cool: 0, spin: 0, cutT: 0, x0: 0, y0: 0 });
+    const { phys, overlay, sfx, fx, lines } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    D.cool -= dt;
+    D.spin += dt * (D.ph === 2 ? 40 : 14 + D.k * 20);
+    const h = [hands.L, hands.R].find((q) => q.present && q.point);
+    const drawDisc = (x, y, R, ang, k) => {
+      const N = 22, tilt = 0.28;
+      for (const [rr, w, ii] of [[1, 3.2, 2.4 * k], [0.72, 2, 1.6 * k]]) {
+        let px, py;
+        for (let i = 0; i <= N; i++) {
+          const a = (i / N) * TAU + D.spin * 0.05;
+          const ex = Math.cos(a) * R * rr, ey = Math.sin(a) * R * rr * tilt;
+          const qx = x + ex * Math.cos(ang) - ey * Math.sin(ang), qy = y + ex * Math.sin(ang) + ey * Math.cos(ang);
+          if (i) lines.spawn(px, py, qx, qy, w * 1.6, this.pal[0], ii * 1.5, 0.09);
+          px = qx; py = qy;
+        }
+      }
+      fx.glow({ x, y, s0: R * 0.8, s1: R * 1.5, dur: 0.09, a: CH.a, b: CH.b, intensity: 1.6 * k });
+    };
+    if (D.ph === 0) {
+      if (h && D.cool <= 0 && h.pointTime > 0.35 && !this.wave.level) D.ph = 1;
+    }
+    if (D.ph === 1) {
+      if (!h) { D.ph = 0; D.k = 0; return; }
+      D.k = Math.min(1, D.k + dt / 0.8);
+      D.x = h.tipX; D.y = h.tipY - h.scale * 1.1;
+      const R = h.scale * (0.7 + D.k * 1.5);
+      drawDisc(D.x, D.y, R, -0.15 + Math.sin(time * 2) * 0.05, D.k);
+      if (D.k < 1 && Math.random() < 0.6) this.spark(D.x + rand(-R, R) * 1.6, D.y + rand(-R, R) * 1.6, 0, 0, { life: 0.15 });
+      sfx.loop('charge', D.k * 0.6);
+      Post.wantAura(D.k * 0.35, CH.a, CH.b);
+      Post.wantDim(D.k * 0.3);
+      levels[0] = Math.max(levels[0], 0.8 + D.k); levels[1] = Math.max(levels[1], 0.8 + D.k);
+      if (D.k >= 1 && !D.ready) { D.ready = true; overlay.callout('気円斬', 'Destructo Disc'); sfx.play('ready'); Post.bloom(1.2); }
+      if (D.k > 0.6 && (h.flick || h.thrust || h.speed > CONFIG.stillSpeed * 6)) {
+        let dx = h.vx, dy = h.vy, m = Math.hypot(dx, dy);
+        if (m < 60) { dx = h.pdx; dy = h.pdy; m = 1; }
+        D.vx = (dx / m) * 2100; D.vy = (dy / m) * 2100;
+        D.ph = 2; D.t = 0; D.ready = false; D.R = R; D.x0 = D.x; D.y0 = D.y; D.cutT = 0;
+        Post.freeze(0.07); Post.shake(0.7); Post.aberrate(10); Post.bloom(1.8); Post.flashScreen(0.25, [1, 1, 1]);
+        sfx.play('beam', 1); this.ctx.onMove(5);
+        this.lines = { t: 0.4, x: D.x, y: D.y };
+      }
+      return;
+    }
+    if (D.ph === 2) {
+      D.t += dt;
+      D.x += D.vx * dt; D.y += D.vy * dt;
+      const ang = Math.atan2(D.vy, D.vx);
+      drawDisc(D.x, D.y, D.R, ang, 1.4);
+      // the cut it leaves: a hairline that lingers
+      lines.spawn(D.x0, D.y0, D.x, D.y, 2.2, CH.b, 1.6, 0.25);
+      D.cutT -= dt;
+      if (D.cutT <= 0) {
+        D.cutT = 0.03;
+        const nx = -Math.sin(ang), ny = Math.cos(ang), sg = Math.random() < 0.5 ? -1 : 1;
+        phys.shard(D.x, D.y, nx * sg * rand(300, 800) + D.vx * 0.15, ny * sg * rand(300, 800) + D.vy * 0.15, pick(['glass', 'steel', 'rock']), rand(8, 18), {});
+        for (let i = 0; i < 2; i++) this.spark(D.x, D.y, ang + Math.PI + rand(-0.6, 0.6), rand(300, 900), { life: 0.2 });
+        phys.push(D.x, D.y, D.vx / 2100, D.vy / 2100, 120, D.R * 1.2, 900);
+      }
+      Post.shake(dt * 0.6);
+      sfx.loop('beam', 0.4);
+      const off = D.x < -60 || D.x > W + 60 || D.y < -60 || D.y > H + 60;
+      if (off || D.t > 1.8) {
+        const ex = clamp(D.x, 20, W - 20), ey = clamp(D.y, 20, H - 20);
+        this.boom(ex, ey, 1.1);
+        phys.blast(ex, ey, base * 0.5, 2200);
+        phys.burst(ex, ey, 14, 'glass', { speed: 1100, size: 12, up: 400, kinds: ['glass', 'steel', 'rock'] });
+        overlay.sfxText('ZUBAAN!', ex, ey, 1.2, [150, 220, 255]);
+        D.ph = 0; D.k = 0; D.cool = 1.2;
+      }
+    }
   }
 
   // ---------- Ki Barrage + Instant Step + aura ----------
