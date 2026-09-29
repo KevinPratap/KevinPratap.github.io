@@ -263,6 +263,24 @@ export class Ferrum {
     if (!beamEnd) sfx.play('crack');
   }
 
+  // Missile hit: an orange fireball that leaves dark smoke.
+  fireball(x, y, power = 1) {
+    const { fx, sfx, overlay } = this.ctx;
+    const base = Math.min(window.innerWidth, window.innerHeight);
+    const FIRE = [[1, 0.55, 0.12], [1, 0.8, 0.3], [1, 0.35, 0.05]];
+    fx.glow({ x, y, s0: 30, s1: base * 0.55 * power, dur: 0.4, a: [1, 0.45, 0.1], b: [1, 0.95, 0.7], intensity: 2.4 });
+    fx.ring({ x, y, r0: 10, r1: base * 0.35 * power, dur: 0.45, width: 18, a: [1, 0.5, 0.1], b: [1, 0.9, 0.6], noise: 0.15, intensity: 1.8 });
+    Post.shockwave({ x, y, speed: 1200, width: 70, strength: 26 * power, life: 0.6 });
+    Post.shake(0.3);
+    Post.aberrate(6);
+    for (let i = 0; i < 40; i++) {
+      const a = rand(0, TAU), s = rand(300, 1300);
+      this.ctx.streaks.spawn({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 1.8, grav: 600, life: rand(0.3, 0.7), c: pick(FIRE), bright: 2.2, width: rand(2, 4), stretch: 0.04, fade: 1.2 });
+    }
+    this.after(0.1, () => overlay.smoke(x, y, 7, 1.1, { spread: 1.3, tint: [70, 66, 64], dur: 1.2, lobes: 3 }));
+    sfx.play('explode', 0.6);
+  }
+
   // ---------- Missile Volley ----------
   launch(h) {
     const { overlay, sfx, particles } = this.ctx;
@@ -278,6 +296,12 @@ export class Ferrum {
     Post.aberrate(6);
     Post.flashScreen(0.12, this.cB);
     this.ctx.onMove(2);
+    this.after(1.1, () => {
+      overlay.sfxText('BOOM!', W / 2, H * 0.3, 1.5, [255, 150, 40]);
+      Post.impact(0.08, [1, 0.8, 0.5]);
+      Post.freeze(0.06);
+      Post.flashScreen(0.3, [1, 0.85, 0.6]);
+    });
     for (let i = 0; i < N; i++) {
       // targets land in a spread around the flick direction
       const a = Math.atan2(ay, ax) + (i - (N - 1) / 2) * 0.24 + rand(-0.06, 0.06);
@@ -286,7 +310,7 @@ export class Ferrum {
       // launch sideways off the hand, then curve in
       const la = Math.atan2(ay, ax) + (i - (N - 1) / 2) * 0.55 + rand(-0.1, 0.1) + (Math.random() < 0.5 ? 0.5 : -0.5);
       this.after(i * 0.07, () => {
-        this.missiles.push({ x: h.tipX ?? h.cx, y: h.tipY ?? h.cy, a: la, sp: 500, tx, ty, t: 0, life: 2.4 });
+        this.missiles.push({ x: h.tipX ?? h.cx, y: h.tipY ?? h.cy, a: la, sp: 420, tx, ty, t: 0, life: 2.4 });
         this.ctx.overlay.reticle(tx, ty, 90);
         sfx.play('lock');
         particles.spawn({ x: h.cx, y: h.cy, life: 0.2, c: this.pal[2], bright: 2, size: 60, size1: 10, fade: 1 });
@@ -309,15 +333,19 @@ export class Ferrum {
       m.sp = Math.min(2500, m.sp + 3600 * dt);
       const vx = Math.cos(m.a) * m.sp, vy = Math.sin(m.a) * m.sp;
       m.x += vx * dt; m.y += vy * dt;
-      // hot head, white smoke trail
-      streaks.spawn({ x: m.x, y: m.y, vx, vy, life: 0.09, c: this.pal[2], bright: 3, width: 5, stretch: 0.035, fade: 1 });
-      particles.spawn({ x: m.x, y: m.y, vx: rand(-40, 40) - vx * 0.05, vy: rand(-40, 40) - vy * 0.05, drag: 1.4, life: rand(0.5, 0.9), c: [0.9, 0.95, 1], bright: 0.3, size: 12, size1: 46, fade: 1.3 });
-      if (Math.random() < 0.5) particles.spawn({ x: m.x, y: m.y, life: 0.25, c: pick(this.pal), bright: 1.4, size: 9, size1: 2, fade: 1 });
+      // hot exhaust glow, solid smoke trail
+      particles.spawn({ x: m.x - Math.cos(m.a) * 30, y: m.y - Math.sin(m.a) * 30, life: 0.12, c: [1, 0.6, 0.2], bright: 1.6, size: 26, size1: 8, fade: 1 });
+      m.smk = (m.smk || 0) - dt;
+      if (m.smk <= 0) {
+        m.smk = 0.045;
+        this.ctx.overlay.smoke(m.x - Math.cos(m.a) * 34, m.y - Math.sin(m.a) * 34, 1, 0.35, { spread: 0.15, dur: 0.8, lobes: 2, tint: [225, 228, 232] });
+      }
       if (Math.hypot(m.tx - m.x, m.ty - m.y) < 34 || m.t > m.life) {
-        this.boom(m.x, m.y, 0.9);
+        this.fireball(m.x, m.y, 1);
         this.missiles.splice(i, 1);
       }
     }
+    this.ctx.overlay.setMissiles(this.missiles);
     if (this.missiles.length) this.ctx.sfx.loop('roar', 0.2);
   }
 
@@ -482,17 +510,18 @@ export class Ferrum {
       const d = Math.hypot(tx - sx, ty - sy);
       const sp = rand(2200, 3400);
       this.after(rand(0, 0.55), () => {
-        streaks.spawn({ x: sx, y: sy, vx: ((tx - sx) / d) * sp, vy: ((ty - sy) / d) * sp, drag: 0, life: d / sp, c: pick(GOLD), bright: 3, width: rand(6, 14), stretch: 0.03, fade: 0.3 });
-        this.after(d / sp, () => {
+        overlay.plate(sx, sy, tx, ty, d / sp * 1.6, i % 3 === 0 ? [205, 160, 50] : [190, 30, 38]);
+        streaks.spawn({ x: sx, y: sy, vx: ((tx - sx) / d) * sp, vy: ((ty - sy) / d) * sp, drag: 0, life: d / sp, c: pick(GOLD), bright: 1.4, width: rand(2, 4), stretch: 0.03, fade: 0.3 });
+        this.after(d / sp * 1.6, () => {
           fx.ring({ x: tx, y: ty, r0: 4, r1: 60, dur: 0.25, width: 6, a: GOLD[0], b: GOLD[2], intensity: 1.6 });
           for (let k = 0; k < 6; k++) this.spark(tx, ty, rand(0, TAU), rand(150, 500), { life: 0.25, width: 2 });
           Post.shake(0.05);
         });
       });
     }
-    this.after(0.9, () => {
+    this.after(1.15, () => {
       Post.impact(0.12, GOLD[2]);
-      Post.flashScreen(0.7, GOLD[2]);
+      Post.flashScreen(0.35, GOLD[2]);
       Post.freeze(0.1);
       Post.shake(1);
       Post.punch(2.2, cx, cy);
@@ -500,8 +529,8 @@ export class Ferrum {
       Post.bloom(2.4);
       Post.shockwave({ x: cx, y: cy, speed: 1700, width: 110, strength: 52, life: 0.9 });
       fx.ring({ x: cx, y: cy, r0: 20, r1: diag * 0.8, dur: 0.8, width: 36, a: GOLD[0], b: GOLD[2], noise: 0.1, intensity: 2.4 });
-      fx.glow({ x: cx, y: cy, s0: 80, s1: diag, dur: 0.55, a: GOLD[0], b: [1, 1, 1], intensity: 3.2 });
-      overlay.crack(cx, cy, 1.2);
+      fx.glow({ x: cx, y: cy, s0: 80, s1: diag * 0.7, dur: 0.45, a: GOLD[0], b: GOLD[2], intensity: 2 });
+      overlay.sfxText('ONLINE', cx, cy + Math.min(W, H) * 0.12, 1.2, [255, 200, 60]);
       for (let i = 0; i < 160; i++) this.spark(cx, cy, rand(0, TAU), rand(600, 2400), { life: rand(0.3, 0.8), width: rand(2, 4) });
     });
     this.ctx.onMove(4);

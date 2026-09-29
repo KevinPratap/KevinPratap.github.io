@@ -180,7 +180,7 @@ export class Mystral {
 
     // ---- Crescent Slash ----
     this.updateSlash(st, h, dt, time);
-    return 0.32 + K * 1.2;
+    return 0.32 + K * 0.35;
   }
 
   drawPath(st, h) {
@@ -351,9 +351,21 @@ export class Mystral {
         px = qx; py = qy;
       }
     });
-    arc(0.34, 46, 3, 0.4, 0);
-    arc(0.22, 26, 2.2, 0.32, 0.03);
-    arc(0.11, 14, 1.8, 0.26, 0.06);
+    arc(0.2, 10, 2, 0.3, 0.04);
+    // the blade itself: a fat crescent of light swept through the frame
+    {
+      const mx0 = (ax + bx) / 2, my0 = (ay + by) / 2;
+      for (const [grow, dly, col, thick] of [[1.25, 0, CH.a, 0.24], [1.7, 0.07, CH.b, 0.12]]) {
+        const cxx = mx0 - nx * L * 0.55 * grow, cyy = my0 - ny * L * 0.55 * grow;
+        const A = [mx0 + (ax - mx0) * grow, my0 + (ay - my0) * grow], B = [mx0 + (bx - mx0) * grow, my0 + (by - my0) * grow];
+        const r = Math.hypot(A[0] - cxx, A[1] - cyy);
+        const a0 = Math.atan2(A[1] - cyy, A[0] - cxx);
+        let d = Math.atan2(B[1] - cyy, B[0] - cxx) - a0;
+        while (d > Math.PI) d -= TAU;
+        while (d <= -Math.PI) d += TAU;
+        this.after(dly, () => overlay.slash(cxx, cyy, r, a0, a0 + d, col, { dur: 0.6, thick }));
+      }
+    }
     Post.tear({ x0: ax, y0: ay, x1: bx, y1: by, strength: 22, width: 10, life: 1.0 });
     Post.freeze(0.07);
     Post.shake(0.55);
@@ -471,11 +483,11 @@ export class Mystral {
       const p = clamp(t.t / 1.5, 0, 1);
       // the clock unwinds faster and faster
       t.ang -= dt * (2 + 18 * p * p);
-      Post.glitchFor(0.25 + 0.5 * p);
+      if (p > 0.6) Post.glitchFor(0.15);
       Post.wantDim(0.6 * p);
       Post.wantZoom(-0.02 + 0.06 * p, t.x, t.y);
       Post.afterimage(0.35 * p, -300 * (0.3 + p));
-      Post.aberrate(4 + 12 * p);
+      Post.aberrate(2 + 4 * p);
       // debris streams backward: every spark flies in toward the clock
       const n = Math.floor(160 * dt * (0.4 + p) + Math.random());
       for (let i = 0; i < n; i++) {
@@ -490,7 +502,7 @@ export class Mystral {
       if (t.t >= 1.5) {
         t.phase = 'boom'; t.t = 0;
         Post.impact(0.14, CH.b);
-        Post.flashScreen(0.85, CH.b);
+        Post.flashScreen(0.45, CH.b);
         Post.freeze(0.12);
         Post.shake(1);
         Post.punch(2.4, t.x, t.y);
@@ -499,8 +511,8 @@ export class Mystral {
         Post.shockwave({ x: t.x, y: t.y, speed: 2000, width: 130, strength: 60, life: 1.0 });
         fx.ring({ x: t.x, y: t.y, r0: 10, r1: diag * 0.85, dur: 0.9, width: 40, a: CH.a, b: CH.b, noise: 0.1, intensity: 2.4 });
         fx.ring({ x: t.x, y: t.y, r0: 10, r1: diag * 0.6, dur: 0.6, width: 20, a: CH.b, b: [1, 1, 1], intensity: 1.8 });
-        fx.glow({ x: t.x, y: t.y, s0: 80, s1: diag, dur: 0.6, a: CH.a, b: [1, 1, 1], intensity: 3.2 });
-        overlay.crack(t.x, t.y, 1.3);
+        fx.glow({ x: t.x, y: t.y, s0: 80, s1: diag * 0.6, dur: 0.4, a: CH.a, b: CH.b, intensity: 1.6 });
+        overlay.sfxText('REWIND', t.x, t.y + base * 0.05, 1.1, [255, 120, 230]);
         for (let i = 0; i < 180; i++) this.spark(t.x, t.y, rand(0, TAU), rand(600, 2400), { life: rand(0.4, 0.9), width: rand(2, 4) });
         sfx.play('nova');
         sfx.play('chime');
@@ -517,26 +529,23 @@ export class Mystral {
       return t.phase !== 'idle';
     }
     const R0 = Math.max(t.R * (0.9 + 0.5 * t.k), base * 0.1) * (t.phase === 'rewind' ? 1.5 + 0.8 * clamp(t.t / 1.5, 0, 1) : 1);
-    setRing(t.rim, t.x, t.y, R0, R0 * 0.03 + 3, 1.8 * t.k, time, 0.05);
+    setRing(t.rim, t.x, t.y, R0 * 1.05, R0 * 0.02 + 3, 0.9 * t.k, time, 0.05);
     t.sigil.target = t.k > 0.05 ? 1 : 0;
     t.sigil.charge = charge;
-    t.sigil.update(dt, time, t.x, t.y, R0 * 2.3, -1.4 + t.ang * 0.3);
-    // clock face: 60 ticks and two hands, drawn fresh each frame
-    const c = MAG[1];
-    for (let i = 0; i < 60; i++) {
-      const a = (i / 60) * TAU - Math.PI / 2, long = i % 5 === 0;
-      const r0 = R0 * (long ? 0.86 : 0.92), r1 = R0 * 0.98;
-      lines.spawn(t.x + Math.cos(a) * r0, t.y + Math.sin(a) * r0, t.x + Math.cos(a) * r1, t.y + Math.sin(a) * r1, long ? 4 : 2, c, 1.5 * t.k, 0.04);
+    t.sigil.update(dt, time, t.x, t.y, R0 * 1.6, -1.4 + t.ang * 0.3);
+    t.sigil.outer.intensity *= 0.4; t.sigil.inner.intensity *= 0.4;
+    // giant clock face with roman numerals; the hands spin backwards
+    overlay.setClock({ x: t.x, y: t.y, r: clamp(R0 * 1.05, base * 0.2, base * 0.4), rot: t.ang * 0.15, hand: t.ang * 3.2, k: t.k, col: CH.a });
+    if (t.phase === 'rewind') {
+      // a second, bigger ghost clock turning the other way
+      overlay.setClock({ x: t.x, y: t.y, r: base * 0.62, rot: -t.ang * 0.1, hand: -t.ang * 1.3, k: t.k * 0.35, col: CH.b });
     }
-    const ha = t.ang * 0.6, ma = t.ang * 3.2;
-    lines.spawn(t.x, t.y, t.x + Math.cos(ha) * R0 * 0.55, t.y + Math.sin(ha) * R0 * 0.55, 7, MAG[2], 2.2 * t.k, 0.04);
-    lines.spawn(t.x, t.y, t.x + Math.cos(ma) * R0 * 0.85, t.y + Math.sin(ma) * R0 * 0.85, 4, MAG[1], 2.2 * t.k, 0.04);
     if (t.phase === 'idle') t.ang += dt * 1.5;
     sfx.loop('charge', charge * 0.5);
     Post.wantAura(0.45 * t.k, CH.a, CH.b);
     overlay.letterbox(t.k * 0.7);
-    levels[0] = Math.max(levels[0], 0.8 + t.k);
-    levels[1] = Math.max(levels[1], 0.8 + t.k);
+    levels[0] = Math.max(levels[0], 0.3 * t.k);
+    levels[1] = Math.max(levels[1], 0.3 * t.k);
     return true;
   }
 }

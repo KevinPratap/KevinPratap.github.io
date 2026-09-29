@@ -227,8 +227,11 @@ export class Kage {
       this.after(0.12 * i, () => {
         this.clone.n = i + 1;
         const x = c.x + CLONE_X[i] * W, y = c.y;
-        this.puff(x, y, 26, 1.1, 1);
-        this.ctx.fx.glow({ x, y, s0: 60, s1: 420, dur: 0.3, a: CH.a, b: CH.b, intensity: 2 });
+        this.puff(x, y, 10, 1.1, 0.6);
+        this.ctx.overlay.smoke(x, y - 20, 16, 1.5, { spread: 1.4 });
+        this.ctx.overlay.smoke(x, y + 120, 8, 1.2, { spread: 1.8 });
+        if (i % 2 === 0) this.ctx.overlay.sfxText('POOF!', x, y - 160, 0.8, [80, 255, 180]);
+        this.ctx.fx.glow({ x, y, s0: 60, s1: 300, dur: 0.25, a: CH.a, b: CH.b, intensity: 1.2 });
         this.ctx.fx.ring({ x, y, r0: 10, r1: 240, dur: 0.4, width: 14, a: CH.a, b: CH.b, intensity: 1.6 });
         Post.shockwave({ x, y, speed: 1000, width: 60, strength: 20, life: 0.5 });
         this.ctx.sfx.play('poof', 0.7);
@@ -248,7 +251,8 @@ export class Kage {
       // dismissed clones pop one by one
       cl.popT = (cl.popT || 0) - dt;
       if (cl.popT <= 0 && cl.n > 0) {
-        this.puff(cl.cx + CLONE_X[cl.n - 1] * W, cl.cy, 18, 1);
+        this.puff(cl.cx + CLONE_X[cl.n - 1] * W, cl.cy, 6, 1, 0.6);
+        this.ctx.overlay.smoke(cl.cx + CLONE_X[cl.n - 1] * W, cl.cy, 14, 1.3, { spread: 1.3 });
         this.ctx.sfx.play('poof', 0.6);
         cl.n--;
         cl.popT = 0.14;
@@ -256,7 +260,7 @@ export class Kage {
       if (cl.n === 0) cl.on = false;
     }
     for (let i = 0; i < 4; i++) {
-      Post.clone(i, CLONE_X[i] * W + Math.sin(time * 1.6 + i * 1.7) * 9, Math.sin(time * 2.1 + i) * 4, i < cl.n ? 0.9 : 0);
+      Post.clone(i, CLONE_X[i] * W + Math.sin(time * 1.6 + i * 1.7) * 9, Math.sin(time * 2.1 + i) * 4, i < cl.n ? 1 : 0);
     }
     if (cl.n > 0) this.ctx.sfx.loop('hum', 0.25);
   }
@@ -274,16 +278,14 @@ export class Kage {
     Post.shake(0.5);
     Post.aberrate(12);
     Post.punch(1.4, c.x, c.y);
-    this.puff(c.x, c.y, 60, 1.6, 1.3);
-    // a wall of smoke sweeps across the frame while you slip away
-    for (let k = 0; k < 5; k++) {
-      this.after(0.06 * k, () => {
-        for (let i = 0; i < 20; i++) {
-          this.ctx.particles.spawn({
-            x: rand(-60, W + 60), y: rand(H * 0.2, H * 1.0), vx: rand(-160, 160), vy: rand(-140, 20), drag: 1.2,
-            life: rand(0.9, 1.6), c: SMOKE, bright: 0.2, size: rand(70, 130), size1: rand(160, 260), fade: 1.3,
-          });
-        }
+    this.puff(c.x, c.y, 16, 1.4, 0.8);
+    overlay.sfxText('BOOF!', c.x, c.y - Math.min(W, H) * 0.3, 1.2, [80, 255, 180]);
+    // a wall of solid smoke swallows the frame while you slip away
+    const ov = this.ctx.overlay, sz = Math.min(W, H) / 450;
+    ov.smoke(c.x, c.y, 26, 2.2 * sz, { spread: 2.4, dur: 1.4 });
+    for (let k = 0; k < 6; k++) {
+      this.after(0.05 * k, () => {
+        for (let i = 0; i < 6; i++) ov.smoke(rand(-40, W + 40), rand(H * 0.1, H * 1.05), 1, rand(2.2, 3.2) * sz, { spread: 0.6, dur: 1.5 });
       });
     }
     // reappear on the far side with a slash of light
@@ -295,7 +297,8 @@ export class Kage {
           life: rand(0.12, 0.25), c: pick(JADE), bright: 2, width: rand(1, 3), stretch: 0.05, fade: 1,
         });
       }
-      this.puff(nx, c.y, 30, 1.1);
+      this.puff(nx, c.y, 12, 1.1, 0.7);
+      this.ctx.overlay.smoke(nx, c.y, 14, 1.4, { spread: 1.5 });
       Post.flashScreen(0.2, CH.b);
       Post.glitchFor(0.4);
       Post.shockwave({ x: nx, y: c.y, speed: 1300, width: 70, strength: 26, life: 0.5 });
@@ -326,10 +329,31 @@ export class Kage {
         this.throwKunai(o.x, o.y, tx, ty, i * 0.012);
       }
     });
-    volley(origins, 14, 0);
+    volley(origins, 10, 0);
     const edges = [];
     for (let i = 0; i < 6; i++) edges.push({ x: rand(0, W), y: i % 2 ? -30 : H + 30 });
-    volley(edges, 12, 0.28);
+    volley(edges, 10, 0.28);
+    // three tagged kunai thunk in last... then all go off at once
+    const bombs = [];
+    this.after(0.62, () => {
+      sfx.play('kunai');
+      for (let i = 0; i < 3; i++) {
+        const tx = W * (0.25 + i * 0.25) + rand(-30, 30), ty = H * rand(0.3, 0.55);
+        const o = pick(origins);
+        bombs.push({ x: tx, y: ty });
+        this.ctx.overlay.kunai(o.x, o.y, tx, ty, 0.16 + i * 0.03, { tag: true, hold: 1.25, size: 1.5 });
+      }
+    });
+    this.after(1.75, () => {
+      for (const b of bombs) this.explode(b.x, b.y);
+      overlay.sfxText('BOOM!', W / 2, H * 0.3, 1.5, [255, 150, 40]);
+      Post.impact(0.1, [1, 0.8, 0.5]);
+      Post.freeze(0.08);
+      Post.shake(1);
+      Post.flashScreen(0.4, [1, 0.85, 0.6]);
+      Post.bloom(2);
+      sfx.play('explode', 1.2);
+    });
     Post.wantDim(0.3);
   }
 
@@ -337,15 +361,7 @@ export class Kage {
     this.after(delay, () => {
       const dx = x1 - x0, dy = y1 - y0, d = Math.hypot(dx, dy) || 1;
       const sp = rand(2200, 3200), life = d / sp;
-      const ctx = this.ctx;
-      this.ctx.streaks.spawn({
-        x: x0, y: y0, vx: (dx / d) * sp, vy: (dy / d) * sp, life, c: [0.75, 1, 0.9], bright: 3, width: 5, stretch: 0.028, fade: 0.2,
-        fn: (p, dt) => {
-          if (Math.random() < dt * 60) {
-            ctx.particles.spawn({ x: p.x, y: p.y, life: rand(0.2, 0.4), c: pick(JADE), bright: 0.9, size: rand(4, 8), size1: 1, fade: 1 });
-          }
-        },
-      });
+      this.ctx.overlay.kunai(x0, y0, x1, y1, life, { hold: rand(1.1, 1.8), size: rand(0.9, 1.25) });
       this.after(life, () => {
         this.ctx.fx.ring({ x: x1, y: y1, r0: 4, r1: 70, dur: 0.28, width: 6, a: CH.a, b: CH.b, intensity: 1.4 });
         this.ctx.fx.glow({ x: x1, y: y1, s0: 20, s1: 110, dur: 0.2, a: CH.a, b: [1, 1, 1], intensity: 2 });
@@ -357,6 +373,20 @@ export class Kage {
     });
   }
 
+  explode(x, y) {
+    const { fx } = this.ctx;
+    const FIRE = [[1, 0.55, 0.12], [1, 0.8, 0.3], [1, 0.35, 0.05]];
+    fx.glow({ x, y, s0: 40, s1: 520, dur: 0.45, a: [1, 0.45, 0.1], b: [1, 0.95, 0.7], intensity: 2.6 });
+    fx.ring({ x, y, r0: 20, r1: 420, dur: 0.5, width: 30, a: [1, 0.5, 0.1], b: [1, 0.9, 0.6], noise: 0.15, intensity: 2 });
+    Post.shockwave({ x, y, speed: 1400, width: 90, strength: 40, life: 0.7 });
+    for (let i = 0; i < 60; i++) {
+      const a = rand(0, TAU), s = rand(300, 1500);
+      this.ctx.streaks.spawn({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 1.8, grav: 500, life: rand(0.3, 0.8), c: pick(FIRE), bright: 2.2, width: rand(2, 4), stretch: 0.04, fade: 1.2 });
+    }
+    // dark smoke after the fireball
+    this.after(0.12, () => this.ctx.overlay.smoke(x, y, 12, 1.5, { spread: 1.6, tint: [70, 66, 62], dur: 1.3 }));
+  }
+
   // ---------- Shadow Binding ----------
   bind(c, hands) {
     const { overlay, sfx } = this.ctx;
@@ -365,9 +395,9 @@ export class Kage {
     b.on = true; b.t = 0; b.squeezed = false;
     b.x = clamp(c.x, W * 0.2, W * 0.8); b.y = clamp(c.y, H * 0.25, H * 0.75);
     b.tr.forEach((tr, i) => {
-      const a = (i / b.tr.length) * TAU + rand(-0.2, 0.2);
-      const R = Math.hypot(W, H) * 0.6;
-      tr.ex = b.x + Math.cos(a) * R; tr.ey = b.y + Math.sin(a) * R;
+      const f = (i + 0.5) / b.tr.length;
+      tr.ex = f < 0.5 ? lerp(-40, W * 0.45, f * 2) : lerp(W * 0.55, W + 40, (f - 0.5) * 2);
+      tr.ey = H + 30 - (Math.abs(f - 0.5) > 0.35 ? rand(0, H * 0.35) : 0);
       tr.ph = rand(0, TAU); tr.amp = rand(90, 190) * (i % 2 ? 1 : -1); tr.delay = i * 0.03;
       tr.trail.width = 34;
     });
@@ -384,16 +414,32 @@ export class Kage {
     b.t += dt;
     const { fx, sfx, overlay } = this.ctx;
     const TRAVEL = 0.6;
-    b.tr.forEach((tr) => {
+    const paths = [];
+    const fadeK = clamp((2.2 - b.t) / 0.5, 0, 1);
+    b.tr.forEach((tr, i) => {
       const s = clamp((b.t - tr.delay) / TRAVEL, 0, 1);
       const e = easeOutCubic(s);
-      const wob = Math.sin(s * 9 + tr.ph + time * 2) * tr.amp * (1 - e);
       const nx = -(tr.ey - b.y), ny = tr.ex - b.x, nl = Math.hypot(nx, ny) || 1;
-      const x = lerp(tr.ex, b.x, e) + (nx / nl) * wob, y = lerp(tr.ey, b.y, e) + (ny / nl) * wob;
-      if (b.t < 1.5) tr.trail.push(x, y, time);
-      tr.trail.width = 34 * (b.squeezed ? Math.max(0.2, 1 - (b.t - TRAVEL - 0.1) * 1.2) : 1);
-      tr.trail.update(time);
+      const pts = [];
+      const N = 34;
+      for (let j = 0; j <= N; j++) {
+        const f = (j / N) * e;
+        const wob = Math.sin(f * 10 + tr.ph + time * 5) * tr.amp * 0.35 * Math.sin(Math.PI * Math.min(1, f / Math.max(e, 0.01)));
+        pts.push([lerp(tr.ex, b.x, f) + (nx / nl) * wob, lerp(tr.ey, b.y, f) + (ny / nl) * wob]);
+      }
+      if (b.squeezed) {
+        // the heads coil around the target and pull tight
+        const sq = clamp((b.t - TRAVEL - 0.08) / 0.3, 0, 1);
+        const R0 = 140 * (1 - sq * 0.75);
+        for (let j = 1; j <= 14; j++) {
+          const a = tr.ph + j * 0.42 + time * 3 * (i % 2 ? 1 : -1);
+          const r = R0 * (1 - j / 20);
+          pts.push([b.x + Math.cos(a) * r, b.y + Math.sin(a) * r * 0.8]);
+        }
+      }
+      paths.push({ pts, w: 26, taper: 0.9 });
     });
+    this.ctx.overlay.setInk({ paths, col: CH.a, a: fadeK, pool: { x: b.x, y: b.y, r: 160 * clamp(b.t / TRAVEL, 0, 1), flat: 0.8 } });
     if (b.t < TRAVEL) {
       Post.wantDim(0.4 + 0.3 * (b.t / TRAVEL));
       Post.wantZoom(0.04 * (b.t / TRAVEL), b.x, b.y);
@@ -413,17 +459,13 @@ export class Kage {
         Post.shockwave({ x: b.x, y: b.y, speed: 1500, width: 90, strength: 44, life: 0.8 });
         fx.glow({ x: b.x, y: b.y, s0: 60, s1: diag * 0.7, dur: 0.45, a: CH.a, b: [1, 1, 1], intensity: 3 });
         fx.ring({ x: b.x, y: b.y, r0: 10, r1: diag * 0.6, dur: 0.6, width: 30, a: CH.a, b: CH.b, intensity: 2 });
-        overlay.crack(b.x, b.y, 1.2);
+        overlay.sfxText('影縛!', b.x, b.y - 200, 1.1, [80, 255, 180]);
         for (let i = 0; i < 140; i++) this.spark(b.x, b.y, rand(0, TAU), rand(500, 2000), { life: rand(0.3, 0.7), width: rand(2, 4) });
         sfx.play('collapse');
         sfx.play('explode', 0.7);
       });
     }
-    if (b.t > TRAVEL + 0.4) b.tr.forEach((tr, i) => { tr.trail.life = 0.15; });
-    if (b.t > 2.2) {
-      b.on = false;
-      b.tr.forEach((tr) => { tr.trail.life = 1.0; tr.trail.pts.length = 0; tr.trail.update(time); });
-    }
+    if (b.t > 2.2) b.on = false;
     overlay.letterbox(clamp(1.4 - b.t, 0, 1));
   }
 
@@ -485,9 +527,22 @@ export class Kage {
       Post.shockwave({ x: e.x, y: e.y, speed: 1800, width: 120, strength: 56, life: 1.0 });
       fx.ring({ x: e.x, y: e.y, r0: R, r1: diag * 0.8, dur: 0.9, width: 40, a: CH.a, b: CH.b, noise: 0.12, intensity: 2.4 });
       fx.glow({ x: e.x, y: e.y, s0: R, s1: diag, dur: 0.6, a: CH.a, b: [1, 1, 1], intensity: 3 });
-      overlay.crack(e.x, e.y, 1.4);
       for (let i = 0; i < 200; i++) this.spark(e.x, e.y, rand(0, TAU), rand(700, 2600), { life: rand(0.4, 0.9), width: rand(2, 4) });
       sfx.play('nova');
+    }
+    // shadow floods the floor and reaches up the walls
+    {
+      const paths = [];
+      for (let i = 0; i < 10; i++) {
+        const x0 = (i + 0.5) / 10 * W, h = H * (0.35 + 0.35 * Math.abs(Math.sin(i * 2.3))) * rise;
+        const pts = [];
+        for (let j = 0; j <= 16; j++) {
+          const f = j / 16;
+          pts.push([x0 + Math.sin(f * 6 + time * 2.4 + i) * 30 * f, H + 20 - h * f]);
+        }
+        paths.push({ pts, w: 34, taper: 0.95 });
+      }
+      overlay.setInk({ paths, col: CH.a, a: vis, pool: { x: W / 2, y: H * 1.02, r: W * 0.75 * rise, flat: 0.4 } });
     }
     // corona rays spinning off the moon
     if (vis > 0.2) {

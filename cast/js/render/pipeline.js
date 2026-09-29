@@ -180,12 +180,25 @@ void main() {
       vec4 c = uCl[i];
       if (c.z <= 0.0) continue;
       vec2 q2 = p - c.xy;
-      float m = uHasMask > 0.5 ? smoothstep(0.35, 0.7, texture2D(tMask, vidUv(q2)).r) : 0.45;
+      float mr = uHasMask > 0.5 ? texture2D(tMask, vidUv(q2)).r : 0.45;
+      float m = uHasMask > 0.5 ? smoothstep(0.35, 0.7, mr) : 0.45;
       vec3 cv = texture2D(tVideo, vidUv(q2)).rgb;
       float cl = dot(cv, vec3(0.299, 0.587, 0.114));
-      cv = mix(cv, vec3(cl) * uClCol * 1.7, 0.42);
-      float vis = m * c.z * (1.0 - smoothstep(0.3, 0.6, m0));
+      cv = mix(cv, vec3(cl) * uClCol * 1.5, 0.22);
+      float front = 1.0 - smoothstep(0.3, 0.6, m0);
+      float vis = m * c.z * front;
       g = mix(g, cv, vis);
+      if (uHasMask > 0.5) {
+        // chakra outline: the mask's edge, found from its neighbours
+        float e = 7.0;
+        float mn = min(min(texture2D(tMask, vidUv(q2 + vec2(e, 0.0))).r, texture2D(tMask, vidUv(q2 - vec2(e, 0.0))).r),
+                       min(texture2D(tMask, vidUv(q2 + vec2(0.0, e))).r, texture2D(tMask, vidUv(q2 - vec2(0.0, e))).r));
+        float mx = max(max(texture2D(tMask, vidUv(q2 + vec2(e, 0.0))).r, texture2D(tMask, vidUv(q2 - vec2(e, 0.0))).r),
+                       max(texture2D(tMask, vidUv(q2 + vec2(0.0, e))).r, texture2D(tMask, vidUv(q2 - vec2(0.0, e))).r));
+        float rim = clamp((mx - mn) * 1.6, 0.0, 1.0);
+        float flick = 0.8 + 0.2 * sin(uTime * 13.0 + q2.y * 0.05);
+        g += uClCol * rim * c.z * front * 1.4 * flick;
+      }
     }
   }
   if (uGhost > 0.0) {
