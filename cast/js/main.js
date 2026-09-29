@@ -17,6 +17,7 @@ import { Mystral } from './engines/mystral.js';
 import { Ferrum } from './engines/ferrum.js';
 import { selectBackground } from './select-bg.js';
 import { Body } from './body.js';
+import { Physics } from './physics.js';
 import { Voice } from './voice.js';
 import { Replay } from './replay.js';
 
@@ -42,7 +43,7 @@ const state = {
   debug: false, lastSeen: 0, clock: 0, used: Object.fromEntries(ORDER.map((k) => [k, new Set()])), pr: 1, fps: 60,
   combo: 0, lastMove: -99,
 };
-let pipeline, particles, streaks, lines, fx, energy, overlay, recorder, engines, wakeLock, replay;
+let pipeline, particles, streaks, lines, fx, energy, overlay, recorder, engines, wakeLock, replay, phys;
 let lastImpact = 0;
 
 // ---------- select screen ----------
@@ -196,7 +197,9 @@ function initGraphics() {
     onError: (m) => { toast(m); setRecUI(false); },
   });
   replay = new Replay({ glCanvas: $('gl'), overlayCanvas: $('overlay'), sfx });
-  const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, voice, energy, onMove: markMove };
+  phys = new Physics(overlay, body);
+  overlay.phys = phys;
+  const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, voice, energy, phys, onMove: markMove };
   engines = { ember: new Ember(ctx), nyx: new Nyx(ctx), raiju: new Raiju(ctx), kai: new Kai(ctx), kage: new Kage(ctx), mystral: new Mystral(ctx), ferrum: new Ferrum(ctx) };
   state.pr = pipeline.pr;
   state.booted = true;
@@ -222,6 +225,7 @@ function enterCharacter(name, intro) {
   Post.freezeT = 0; Post.glitch = 0; Post.ghost = 0; Post.edge = 0;
   state.combo = 0;
   overlay.clear();
+  phys.clear();
   state.char = name;
   const ch = CHARACTERS[name];
   state.engine = engines[name];
@@ -345,6 +349,11 @@ function frame(now) {
   streaks.update(gdt);
   lines.update(dt);
   fx.update(gdt, time);
+  // hands stir the air: smoke and debris get dragged along with them
+  overlay.wind = [H.L, H.R].filter((h) => h.present && h.speed > 0.25).map((h) => ({
+    x: h.cx, y: h.cy, vx: h.vx, vy: h.vy, r: h.scale * 4.5, sp: Math.min(2, h.speed * 0.4),
+  }));
+  phys.step(gdt);
   sfx.endFrame();
   pipeline.render(dt, time);
   overlay.draw(dt);

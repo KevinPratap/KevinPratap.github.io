@@ -42,6 +42,7 @@ export class Ferrum {
     this.hud = { on: false, k: 0, fist: 0, cool: 0 };
     this.suit = { on: false, t: 0, hold: 0, cool: 0, glow: new FXQuad(S, 'glow', { a: GOLD[0], b: GOLD[2], intensity: 0, param: [3, 0, 0, 0] }), ring: new FXQuad(S, 'ring', { a: GOLD[0], b: GOLD[2], intensity: 0 }), x: 0, y: 0 };
     this.thrust = { k: 0, called: 0, alt: 0 };
+    this.holo = { on: false, k: 0, d0: 0, e: 0, yaw: 0.6, roll: 0, t: 0, lost: 0, x: 0, y: 0, S: 0, hold: 0, cool: 0 };
     this.uni = {
       c: 0, on: false, t: 0, x: 0, y: 0, dx: 0, dy: -1, boomT: 0, lost: 0, cool: 0,
       q: new FXQuad(S, 'beam', { a: CH.a, b: CH.b, intensity: 0 }),
@@ -107,7 +108,8 @@ export class Ferrum {
     const suitBusy = this.updateSuit(L, R, dt, time, levels);
     const flying = this.updateThrusters(L, R, dt, time, levels);
     const beaming = this.updateUnibeam(L, R, dt, time, levels);
-    const busy = suitBusy || flying || beaming;
+    const holoing = this.updateHolo(L, R, dt, time, levels);
+    const busy = suitBusy || flying || beaming || holoing;
     this.power = 0;
     for (const [k, h] of [['L', L], ['R', R]]) {
       const lv = this.updateHand(this.slots[k], h, other(h, L, R), dt, time, busy);
@@ -223,6 +225,7 @@ export class Ferrum {
       const q = new FXQuad(scene, 'beam', { a: this.cA, b: this.cB, intensity: 2.2 });
       this.beams.push({ q, x, y, dx, dy, len: e.len, w: h.scale * (0.55 + 0.6 * pw), t: 0, life: 0.55, ex: e.x, ey: e.y, boltT: 0 });
       Post.punch(-1.2, x, y);
+      this.ctx.phys.push(x, y, dx, dy, e.len, 140, 2600 * this.pow);
       for (let i = 1; i <= 4; i++) {
         fx.ring({ x: x + dx * h.scale * i * 1.1, y: y + dy * h.scale * i * 1.1, r0: h.scale * 0.35, r1: h.scale * (1.4 - i * 0.2), dur: 0.3 + i * 0.05, width: 6, a: this.cA, b: this.cB, intensity: 1.8 });
       }
@@ -270,6 +273,9 @@ export class Ferrum {
     Post.shake(beamEnd ? 0.35 : 0.14);
     Post.aberrate(beamEnd ? 8 : 4);
     for (let i = 0; i < 26 * power; i++) this.spark(x, y, rand(0, TAU), rand(300, 1400) * power, { life: rand(0.2, 0.5) });
+    const ph = this.ctx.phys;
+    ph.blast(x, y, 320 * power, 1100 * power);
+    ph.burst(x, y, beamEnd ? 3 : 6, 'rock', { speed: 900 * power, size: 9, up: 350, hot: 0.5 });
     if (!beamEnd) sfx.play('crack');
   }
 
@@ -287,8 +293,62 @@ export class Ferrum {
       const a = rand(0, TAU), s = rand(300, 1300);
       this.ctx.streaks.spawn({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 1.8, grav: 600, life: rand(0.3, 0.7), c: pick(FIRE), bright: 2.2, width: rand(2, 4), stretch: 0.04, fade: 1.2 });
     }
+    this.ctx.phys.blast(x, y, 500 * power, 1800 * power);
+    this.ctx.phys.burst(x, y, 10, 'rock', { speed: 1200, size: 11, up: 500, hot: 0.7 });
     this.after(0.1, () => overlay.smoke(x, y, 7, 1.1, { spread: 1.3, tint: [70, 66, 64], dur: 1.2, lobes: 3 }));
     sfx.play('explode', 0.6);
+  }
+
+  // ---------- Holo Schematic ----------
+  // Pinch with both hands and pull them apart: a 3D reactor unfolds between
+  // them. Spread wider and it comes apart layer by layer; bring them
+  // together and it snaps back. Tilt your hands to spin it.
+  updateHolo(L, R, dt, time, levels) {
+    const o = this.holo, { overlay, sfx, fx } = this.ctx;
+    o.cool -= dt;
+    const both = L.present && R.present && L.pinch && R.pinch;
+    if (!o.on) {
+      o.hold = both && o.cool <= 0 ? o.hold + dt : 0;
+      if (o.hold > 0.22) {
+        o.on = true; o.k = 0; o.lost = 0; o.t = 0; o.e = 0; o.hold = 0;
+        o.d0 = Math.hypot(L.pinchX - R.pinchX, L.pinchY - R.pinchY);
+        overlay.callout('設計図', 'Holo Schematic', { dur: 1.1 });
+        sfx.play('holo');
+        this.ctx.onMove(6);
+        Post.flashScreen(0.15, this.cB);
+        fx.ring({ x: (L.pinchX + R.pinchX) / 2, y: (L.pinchY + R.pinchY) / 2, r0: 10, r1: 300, dur: 0.45, width: 10, a: this.cA, b: this.cB, intensity: 1.8 });
+      }
+      return false;
+    }
+    o.t += dt;
+    if (both) o.lost = 0; else o.lost += dt;
+    o.k = o.lost > 0.35 ? Math.max(0, o.k - dt * 5) : Math.min(1, o.k + dt * 5);
+    if (o.lost > 0.35 && o.k <= 0) {
+      o.on = false; o.cool = 0.6;
+      sfx.play('lock');
+      return false;
+    }
+    if (L.present && R.present) {
+      const ax = L.pinchX, ay = L.pinchY, bx = R.pinchX, by = R.pinchY;
+      const d = Math.hypot(ax - bx, ay - by) || 1;
+      const mx = (ax + bx) / 2, my = (ay + by) / 2;
+      o.x = damp(o.x || mx, mx, 14, dt); o.y = damp(o.y || my, my, 14, dt);
+      o.S = damp(o.S || d * 0.36, clamp(d * 0.36, 50, Math.min(window.innerWidth, window.innerHeight) * 0.4), 10, dt);
+      const ratio = d / Math.max(o.d0, 60);
+      o.e = damp(o.e, clamp((ratio - 1) * 1.5, 0, 1.6), 6, dt);
+      // one hand higher than the other spins it; the line between them rolls it
+      const tilt = (by - ay) / d;
+      o.yaw += (0.55 + tilt * 3.2) * dt;
+      o.roll = damp(o.roll, Math.atan2(by - ay, bx - ax) * 0.5, 8, dt);
+      o.hx = [{ x: ax, y: ay }, { x: bx, y: by }];
+      if (Math.random() < dt * 30) this.spark(ax, ay, rand(0, TAU), rand(80, 300), { life: 0.25, width: 1.6 });
+      if (Math.random() < dt * 30) this.spark(bx, by, rand(0, TAU), rand(80, 300), { life: 0.25, width: 1.6 });
+    }
+    overlay.setHolo({ x: o.x, y: o.y, S: o.S, yaw: o.yaw, pitch: 0.5, roll: o.roll, e: o.e, k: o.k, t: o.t, a: this.suit.on ? [1, 0.82, 0.35] : [0.3, 0.9, 1], hands: o.hx || [{ x: o.x - 50, y: o.y }, { x: o.x + 50, y: o.y }] });
+    Post.wantDim(0.3 * o.k);
+    sfx.loop('hum', 0.4 * o.k);
+    levels[0] = levels[1] = 0.2;
+    return true;
   }
 
   // ---------- Unibeam ----------
@@ -648,6 +708,8 @@ export class Ferrum {
       fx.glow({ x: cx, y: cy, s0: 80, s1: diag * 0.7, dur: 0.45, a: GOLD[0], b: GOLD[2], intensity: 2 });
       overlay.sfxText('ONLINE', cx, cy + Math.min(W, H) * 0.12, 1.2, [255, 200, 60]);
       for (let i = 0; i < 160; i++) this.spark(cx, cy, rand(0, TAU), rand(600, 2400), { life: rand(0.3, 0.8), width: rand(2, 4) });
+      this.ctx.phys.blast(cx, cy, 900, 2400);
+      this.ctx.phys.burst(cx, cy, 26, 'red', { speed: 1400, size: 15, up: 500, kinds: ['red', 'gold', 'steel'] });
     });
     this.ctx.onMove(4);
   }

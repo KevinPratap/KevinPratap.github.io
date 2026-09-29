@@ -27,6 +27,7 @@ const RECIPES = [
   { move: 0, seq: ['two', 'fist', 'clap'], fn: 'clones' },
   { move: 1, seq: ['open', 'fist', 'point'], fn: 'smoke' },
   { move: 2, seq: ['point', 'two', 'open'], fn: 'kunai' },
+  { move: 6, seq: ['clap', 'fist'], fn: 'substitute' },
 ];
 
 const HOLD = 0.2;       // seconds a sign must be held to count
@@ -60,6 +61,7 @@ export class Kage {
     this.ecl = { on: false, t: 0, x: 0, y: 0, r: 0, lens: null, glow: new FXQuad(S, 'glow', { a: CH.a, b: CH.b, intensity: 0, param: [2.2, 0, 0, 0] }), rays: 0 };
     this.wisp = 0;
     this.near = { t: -9, sign: false };
+    this.log = { on: false, t: 0, x: 0, y: 0, vy: 0, vx: 0, rot: 0, vr: 0, bounced: 0, boom: false };
     this.crossT = 0; this.cloneCool = 0;
     this.shu = { state: 'none', t: 0, x: 0, y: 0, vx: 0, vy: 0, rot: 0, spin: 0, r: 60, hold: 0, slot: 'R', bounces: 0, k: 0 };
   }
@@ -136,7 +138,7 @@ export class Kage {
     // touching a moment ago and one just vanished, that's still the sign.
     if (h && time - this.near.t < 0.45) {
       if (this.near.sign && (h.point || h.two)) return 'cross';
-      if (!this.near.sign && !h.point && !h.two) return 'clap';
+      if (!this.near.sign && !h.point && !h.two && !h.fist) return 'clap';
     }
     return h ? oneHand(h) : null;
   }
@@ -246,6 +248,7 @@ export class Kage {
     if (this.wisp <= 0) this.wisp = 0.06;
 
     this.updateShuriken(dt, time, hands);
+    this.updateLog(dt, time);
     this.updateClones(dt, time);
     this.updateBind(dt, time);
     this.updateEclipse(dt, time);
@@ -543,8 +546,68 @@ export class Kage {
     });
   }
 
+  // ---------- Substitution (Kawarimi) ----------
+  // A heavy log drops where you stood, bounces on the floor (or your
+  // shoulders), and bursts into real, tumbling splinters as you vanish.
+  substitute(c) {
+    const { overlay, sfx } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight;
+    const l = this.log;
+    l.on = true; l.t = 0; l.x = clamp(c.x, W * 0.22, W * 0.78); l.y = -140; l.vy = 0; l.vx = rand(-60, 60); l.rot = rand(-0.5, 0.5); l.vr = rand(-2, 2);
+    l.bounced = 0; l.boom = false; l.len = Math.min(W, H) * 0.62; l.w = Math.min(W, H) * 0.15;
+    overlay.callout('変わり身', 'Substitution', { big: true, dur: 1.5 });
+    sfx.play('whoomp');
+    Post.afterimage(0.8, (c.x < W / 2 ? 1 : -1) * 900);
+    Post.glitchFor(0.4);
+    Post.flashScreen(0.2, [0.9, 1, 0.95]);
+    // you are already gone: smoke where you stood
+    overlay.smoke(l.x, H * 0.62, 26, 2.4 * Math.min(W, H) / 450, { spread: 2.2 });
+  }
+
+  updateLog(dt, time) {
+    const l = this.log;
+    if (!l.on) return;
+    const { overlay, sfx, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, floor = H * 0.7;
+    l.t += dt;
+    if (!l.boom) {
+      l.vy += 3200 * dt;
+      l.y += l.vy * dt; l.x += l.vx * dt; l.rot += l.vr * dt;
+      if (l.y > floor && l.vy > 0) {
+        l.y = floor; l.vy *= -0.36; l.vr = rand(-5, 5); l.bounced++;
+        Post.shake(0.6); Post.freeze(0.05); Post.shockwave({ x: l.x, y: H * 0.72, speed: 1200, width: 70, strength: 24, life: 0.5 });
+        sfx.play('thud'); sfx.play('crack');
+        overlay.smoke(l.x, H * 0.72, 8, 1.5, { spread: 1.8 });
+        if (l.bounced >= 2 || Math.abs(l.vy) < 200) this.after(0.12, () => this.logBurst());
+      }
+      overlay.setLog({ x: l.x, y: l.y, rot: l.rot, len: l.len, w: l.w, a: 1 });
+    }
+  }
+
+  logBurst() {
+    const l = this.log, { overlay, sfx, phys, fx } = this.ctx;
+    if (l.boom) return;
+    l.boom = true;
+    const H = window.innerHeight;
+    Post.impact(0.1, [1, 0.95, 0.85]);
+    Post.shake(1); Post.freeze(0.08); Post.aberrate(10);
+    Post.shockwave({ x: l.x, y: l.y, speed: 1700, width: 100, strength: 44, life: 0.7 });
+    fx.ring({ x: l.x, y: l.y, r0: 10, r1: 420, dur: 0.45, width: 24, a: [1, 0.7, 0.35], b: [1, 1, 0.9], noise: 0.12, intensity: 1.8 });
+    phys.blast(l.x, l.y, 500, 2600);
+    phys.burst(l.x, l.y, 36, 'wood', { speed: 1500, size: 15, stretch: 3.2, up: 500 });
+    phys.burst(l.x, l.y, 14, 'wood', { speed: 800, size: 30, stretch: 1.4, up: 300 });
+    overlay.smoke(l.x, l.y, 18, 2, { spread: 2.2 });
+    overlay.sfxText('POOF!', l.x, l.y - 130, 1.3, [255, 220, 150]);
+    sfx.play('explode', 0.8); sfx.play('poof', 1.2);
+    for (let i = 0; i < 40; i++) this.spark(l.x, l.y, rand(0, TAU), rand(500, 1800), { c: [1, 0.85, 0.5], life: rand(0.2, 0.5) });
+    l.on = false;
+    this.ctx.onMove(6);
+  }
+
   explode(x, y) {
-    const { fx } = this.ctx;
+    const { fx, phys } = this.ctx;
+    phys.blast(x, y, 420, 1500);
+    phys.burst(x, y, 18, 'rock', { speed: 1300, size: 10, up: 450, hot: 0.7 });
     const FIRE = [[1, 0.55, 0.12], [1, 0.8, 0.3], [1, 0.35, 0.05]];
     fx.glow({ x, y, s0: 40, s1: 520, dur: 0.45, a: [1, 0.45, 0.1], b: [1, 0.95, 0.7], intensity: 2.6 });
     fx.ring({ x, y, r0: 20, r1: 420, dur: 0.5, width: 30, a: [1, 0.5, 0.1], b: [1, 0.9, 0.6], noise: 0.15, intensity: 2 });
@@ -586,28 +649,30 @@ export class Kage {
     const TRAVEL = 0.6;
     const paths = [];
     const fadeK = clamp((2.2 - b.t) / 0.5, 0, 1);
+    const SEG = 24, NSEG = 34;
     b.tr.forEach((tr, i) => {
+      if (!tr.chain || b.t < dt * 1.5) tr.chain = Array.from({ length: NSEG }, () => [tr.ex, tr.ey]);
       const s = clamp((b.t - tr.delay) / TRAVEL, 0, 1);
       const e = easeOutCubic(s);
       const nx = -(tr.ey - b.y), ny = tr.ex - b.x, nl = Math.hypot(nx, ny) || 1;
-      const pts = [];
-      const N = 34;
-      for (let j = 0; j <= N; j++) {
-        const f = (j / N) * e;
-        const wob = Math.sin(f * 10 + tr.ph + time * 5) * tr.amp * 0.35 * Math.sin(Math.PI * Math.min(1, f / Math.max(e, 0.01)));
-        pts.push([lerp(tr.ex, b.x, f) + (nx / nl) * wob, lerp(tr.ey, b.y, f) + (ny / nl) * wob]);
-      }
+      // the head flies in along a wobbling line, then coils tighter and tighter
+      let hx, hy;
       if (b.squeezed) {
-        // the heads coil around the target and pull tight
-        const sq = clamp((b.t - TRAVEL - 0.08) / 0.3, 0, 1);
-        const R0 = 140 * (1 - sq * 0.75);
-        for (let j = 1; j <= 14; j++) {
-          const a = tr.ph + j * 0.42 + time * 3 * (i % 2 ? 1 : -1);
-          const r = R0 * (1 - j / 20);
-          pts.push([b.x + Math.cos(a) * r, b.y + Math.sin(a) * r * 0.8]);
-        }
+        const sq = clamp((b.t - TRAVEL - 0.08) / 0.35, 0, 1);
+        const a = tr.ph + (b.t - TRAVEL) * 7 * (i % 2 ? 1 : -1);
+        const r = 150 * (1 - sq * 0.8) + i * 3;
+        hx = b.x + Math.cos(a) * r; hy = b.y + Math.sin(a) * r * 0.85;
+      } else {
+        const wob = Math.sin(s * 9 + tr.ph + time * 5) * tr.amp * 0.5 * (1 - e);
+        hx = lerp(tr.ex, b.x, e) + (nx / nl) * wob; hy = lerp(tr.ey, b.y, e) + (ny / nl) * wob;
       }
-      paths.push({ pts, w: 26, taper: 0.9 });
+      const C = tr.chain;
+      C[0][0] = hx; C[0][1] = hy;
+      for (let j = 1; j < NSEG; j++) {
+        const dx = C[j][0] - C[j - 1][0], dy = C[j][1] - C[j - 1][1] + 220 * dt, d = Math.hypot(dx, dy) || 1;
+        C[j][0] = C[j - 1][0] + (dx / d) * SEG; C[j][1] = C[j - 1][1] + (dy / d) * SEG;
+      }
+      paths.push({ pts: C.map((p) => [p[0], p[1]]), w: 26, taper: 0.9 });
     });
     this.ctx.overlay.setInk({ paths, col: CH.a, a: fadeK, pool: { x: b.x, y: b.y, r: 160 * clamp(b.t / TRAVEL, 0, 1), flat: 0.8 } });
     if (b.t < TRAVEL) {

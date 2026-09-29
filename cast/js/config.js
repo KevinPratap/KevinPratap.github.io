@@ -138,6 +138,7 @@ export const CHARACTERS = {
       { id: 'bind', kanji: '影縛', name: 'Shadow Binding', how: 'Four signs: fist, point, two fingers, then clap.' },
       { id: 'eclipse', kanji: '影蝕', name: 'Grand Eclipse', how: 'Five signs: fist, two fingers, point, open palm, then clap.' },
       { id: 'shuriken', kanji: '風魔手裏剣', name: 'Windmill Shuriken', how: 'Hold an open palm still for a second. Flick to throw it. It comes back to your hand.' },
+      { id: 'substitute', kanji: '変わり身', name: 'Substitution', how: 'Signs: clap, then fist. A log takes your place and bursts into splinters.' },
     ],
   },
   mystral: {
@@ -155,6 +156,7 @@ export const CHARACTERS = {
       { id: 'crescent', kanji: '月光斬', name: 'Crescent Slash', how: 'Two fingers up, then swipe fast.' },
       { id: 'time', kanji: '時廻', name: 'Time Loop', how: 'Press both hands together and hold. Time runs backward.' },
       { id: 'whip', kanji: '魔鞭', name: 'Eldritch Whip', how: 'Pinch thumb and index finger together, then swing. Snap it fast to crack.' },
+      { id: 'singularity', kanji: '特異点', name: 'Singularity', how: 'Make a fist and hold it still. A black hole forms and swallows the room. Open your hand to release, or flick to throw it.' },
     ],
   },
   ferrum: {
@@ -173,10 +175,11 @@ export const CHARACTERS = {
       { id: 'missile', kanji: '追尾弾', name: 'Missile Volley', how: 'Two fingers up, then flick.' },
       { id: 'thrusters', kanji: '飛行', name: 'Thrusters', how: 'Both palms open, fingers pointing down.' },
       { id: 'suit', kanji: '装着', name: 'Suit-Up', how: 'Bring both fists together and hold. Powers up every move.' },
+      { id: 'holo', kanji: '設計図', name: 'Holo Schematic', how: 'Pinch with both hands and pull apart. The reactor comes apart layer by layer. Tilt your hands to spin it.' },
       { id: 'unibeam', kanji: '胸部砲', name: 'Unibeam', how: 'Both palms open side by side, held still. Move your hands to steer the beam.' },
     ],
   },
 };
 
 // Characters for the Google Fonts subset request (only these glyphs download).
-export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着十風手裏剣胸部砲'))).join('');
+export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着十風手裏剣胸部砲変わり設計図'))).join('');

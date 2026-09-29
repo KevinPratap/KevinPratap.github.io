@@ -210,6 +210,22 @@ export class SFX {
         this.tone({ f0: 150, f1: 24, dur: 1.4, gain: 1.0 });
         this.tone({ type: 'sawtooth', f0: 90, f1: 40, dur: 1.2, gain: 0.25, send: 0.4 });
         break;
+      case 'thud':
+        this.tone({ f0: 120, f1: 36, dur: 0.32, gain: 0.95 });
+        this.hit({ type: 'lowpass', f0: 900, f1: 120, dur: 0.22, gain: 0.5 });
+        break;
+      case 'debris':
+        this.hit({ type: 'bandpass', f0: 1800, f1: 700, q: 1.2, dur: 0.09, gain: 0.35, attack: 0.002 });
+        this.tone({ type: 'square', f0: 340, f1: 160, dur: 0.06, gain: 0.08 });
+        break;
+      case 'singularity':
+        this.tone({ f0: 55, f1: 28, dur: 1.4, gain: 0.9 });
+        this.hit({ type: 'lowpass', f0: 3000, f1: 80, dur: 1.2, gain: 0.5, attack: 0.3, send: 0.5 });
+        break;
+      case 'holo':
+        this.tone({ f0: 660, f1: 1320, dur: 0.18, gain: 0.16, send: 0.4 });
+        this.tone({ f0: 990, f1: 1980, dur: 0.22, gain: 0.1, send: 0.4 });
+        break;
       case 'whoomp':
         this.hit({ type: 'lowpass', f0: 250, f1: 2200, dur: 0.55, gain: 0.55, attack: 0.08 });
         break;

@@ -51,12 +51,14 @@ export class Mystral {
       sigil: new Sigil(S, this.tex, CH.a, CH.b),
     };
     this.cool = { crescent: 0 };
+    this.sing = { on: false, hold: 0, slot: 'R', x: 0, y: 0, vx: 0, vy: 0, thrown: false, t: 0, R: 44, k: 0, well: null, lens: null, spawnT: 0, rockT: 0, eaten: 0, lost: 0, cool: 0, pulse: 0, rim: new FXQuad(S, 'ring', { a: CH.a, b: CH.b, intensity: 0 }) };
     this.timers = [];
     this.slash = { on: false, x0: 0, y0: 0, x1: 0, y1: 0, t: 0 };
   }
 
   enter() {
     this.portal.src = Post.source('window');
+    this.sing.lens = Post.source('lens');
   }
 
   exit() {
@@ -66,6 +68,8 @@ export class Mystral {
       st.sigil.target = 0; st.sigil.level = 0; st.sigil.update(0, 0, 0, 0, 1);
       st.halo.intensity = 0;
     }
+    this.endSing(true);
+    if (this.sing.lens) { const j = Post.persistent.indexOf(this.sing.lens); if (j >= 0) Post.persistent.splice(j, 1); this.sing.lens = null; }
     const p = this.portal;
     p.on = false; p.k = 0;
     p.rim.intensity = 0; p.rim2.intensity = 0;
@@ -104,6 +108,7 @@ export class Mystral {
     const levels = [0.32, 0.32];
     const mirrorOn = this.updateMirror(hands, dt, time, levels);
     const clockOn = this.updateTime(hands, dt, time, levels);
+    const singOn = this.updateSing(hands, dt, time);
     const busy = mirrorOn || clockOn;
     levels[0] = Math.max(levels[0], this.updateHand(this.slots.L, hands.L, dt, time, busy));
     levels[1] = Math.max(levels[1], this.updateHand(this.slots.R, hands.R, dt, time, busy));
@@ -357,6 +362,182 @@ export class Mystral {
       for (let i = 0; i < 80; i++) this.spark(p.x, p.y, rand(0, TAU), rand(400, 1500));
     });
     sfx.play('collapse');
+  }
+
+  // ---------- Singularity ----------
+  // Hold a fist still and a black hole forms in it. Real gravity pulls
+  // debris and sparks into orbit around it: they spiral in, heat up and
+  // vanish at the horizon. Move your fist and the whole swirl follows.
+  // Open the hand to let go, and everything it swallowed is flung out.
+  updateSing(hands, dt, time) {
+    const s = this.sing, { overlay, sfx, fx, phys, lines } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H), diag = Math.hypot(W, H);
+    s.cool -= dt;
+    const L = hands.L, R = hands.R;
+    let h = null;
+    for (const c of [L, R]) {
+      const o = c === L ? R : L;
+      if (c.present && c.fist && (!o.present || Math.hypot(o.cx - c.cx, o.cy - c.cy) > c.scale * 4.5) && !c.pinch) h = c;
+    }
+    const tHand = s.on ? hands[s.slot] : h;
+    if (!s.on) {
+      if (h && h.still && s.cool <= 0 && !this.mir.on && this.tl.phase === 'idle') {
+        s.hold += dt * this.ctx.voice.boost; s.slot = h.slot; s.x = h.cx; s.y = h.cy;
+      } else s.hold = Math.max(0, s.hold - dt * 2.5);
+      if (s.hold > 0.05) {
+        // charging: a dark seed and a ring collapsing onto the fist
+        const c = clamp(s.hold / 0.6, 0, 1), sc = h ? h.scale : 70;
+        if (h) { s.x = h.cx; s.y = h.cy; }
+        setRing(s.rim, s.x, s.y, sc * (3.2 - 2.4 * c), 3 + c * 3, 0.9 + c, time, 0.06);
+        Post.wantDim(0.25 * c);
+        sfx.loop('charge', c * 0.8);
+        if (Math.random() < dt * 110 * c) {
+          const a = rand(0, TAU), d = sc * rand(2.4, 4);
+          this.ctx.streaks.spawn({ x: s.x + Math.cos(a) * d, y: s.y + Math.sin(a) * d, vx: -Math.cos(a) * d * 6, vy: -Math.sin(a) * d * 6, drag: 0, life: 0.16, c: pick(MAG), bright: 1.8, width: 2, stretch: 0.06, fade: 0.8 });
+        }
+        if (s.hold >= 0.6) this.startSing(h);
+      } else s.rim.intensity = 0;
+      return false;
+    }
+    // ---- alive ----
+    s.t += dt;
+    s.k = damp(s.k, 1, 5, dt);
+    s.rim.intensity = 0;
+    const releasing = !s.thrown && (!tHand.present ? (s.lost += dt) > 0.6 : (s.lost = 0, tHand.isOpen && tHand.open > 0.75 && s.t > 0.5));
+    if (!s.thrown) {
+      if (tHand.present) {
+        // heavy: it lags behind the fist, so it swings when you sweep
+        const k = 1 - Math.exp(-7 * dt);
+        const nx = s.x + (tHand.cx - s.x) * k, ny = s.y + (tHand.cy - s.y) * k;
+        s.vx = (nx - s.x) / dt; s.vy = (ny - s.y) / dt; s.x = nx; s.y = ny;
+        if (tHand.flick && tHand.fist && s.t > 0.6) {
+          const d = tHand.dir();
+          s.thrown = true; s.t = 0; s.vx = d.x * 1500; s.vy = d.y * 1500;
+          overlay.callout('特異点', 'Singularity: Thrown', { dur: 0.9 });
+          sfx.play('whip');
+          Post.shake(0.4);
+        }
+      }
+    } else {
+      s.x += s.vx * dt; s.y += s.vy * dt;
+      const drag = Math.exp(-0.7 * dt); s.vx *= drag; s.vy *= drag;
+      if (s.x < 60 && s.vx < 0) s.vx *= -0.8;
+      if (s.x > W - 60 && s.vx > 0) s.vx *= -0.8;
+      if (s.y < 60 && s.vy < 0) s.vy *= -0.8;
+      if (s.y > H - 60 && s.vy > 0) s.vy *= -0.8;
+    }
+    s.R = base * 0.075 * (1 + Math.min(0.5, s.eaten / 160));
+    if (s.well) { s.well.x = s.x; s.well.y = s.y; s.well.rs = s.R * 0.9; }
+    // spawn matter on a wide ring: some near-circular, some plunging
+    s.spawnT -= dt; s.rockT -= dt;
+    if (s.spawnT <= 0) {
+      s.spawnT = 0.014;
+      for (let i = 0; i < 2; i++) {
+        const a = rand(0, TAU), r = rand(base * 0.35, base * 0.85);
+        const px = s.x + Math.cos(a) * r, py = s.y + Math.sin(a) * r * 0.85;
+        const vc = Math.sqrt(s.well.GM / r) * rand(0.45, 0.98);
+        phys.orbiter(px, py, -Math.sin(a) * vc + s.vx * 0.3, Math.cos(a) * vc + s.vy * 0.3, { life: rand(5, 9), hue: Math.random() });
+      }
+    }
+    if (s.rockT <= 0 && !releasing) {
+      s.rockT = rand(0.18, 0.4);
+      const x = rand(W * 0.05, W * 0.95);
+      phys.shard(x, H * 0.98, rand(-120, 120), -rand(900, 1700), pick(['rock', 'rock', 'glass']), rand(10, 22), { life: 9 });
+    }
+    // ---- look: horizon, Einstein ring, tilted accretion disk ----
+    const Rh = s.R * s.k;
+    if (s.lens) { s.lens.x = s.x; s.lens.y = s.y; s.lens.radius = Math.max(Rh * 0.9, 1); s.lens.strength = Rh > 2 ? 0.75 : 0; s.lens.horizon = Rh; s.lens.seed = 3; }
+    s.rim.intensity = 0;
+    overlay.setHole({ x: s.x, y: s.y, r: Rh, k: s.k });
+    s.pulse = damp(s.pulse, 0, 4, dt);
+    const spin = time * 1.9;
+    for (let ring = 0; ring < 4; ring++) {
+      const rr = Rh * (1.55 + ring * 0.55), N = 44 - ring * 4, heat = 1 - ring / 4.5;
+      for (let i = 0; i < N; i++) {
+        const a0 = spin * (1.3 - ring * 0.2) + (i / N) * TAU, a1 = a0 + TAU / N * 0.8;
+        // doppler beaming: the side coming at us is brighter
+        const beam = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(a0 + 0.4));
+        const col = ring < 1 ? [1, 0.95, 0.85] : ring < 2 ? [1, 0.7, 0.9] : [0.75, 0.45, 1];
+        const br = (0.55 + heat) * beam * s.k * (1 + s.pulse);
+        const p0x = s.x + Math.cos(a0) * rr, p0y = s.y + Math.sin(a0) * rr * 0.26;
+        const p1x = s.x + Math.cos(a1) * rr, p1y = s.y + Math.sin(a1) * rr * 0.26;
+        lines.spawn(p0x, p0y, p1x, p1y, 5 - ring, col, br * 0.8, 0.04);
+      }
+    }
+    // the far side of the disk, bent up and over the hole by gravity
+    for (let i = 0; i < 26; i++) {
+      const a0 = Math.PI + (i / 26) * Math.PI, a1 = Math.PI + ((i + 0.8) / 26) * Math.PI;
+      const rr = Rh * 1.75;
+      lines.spawn(s.x + Math.cos(a0) * rr, s.y + Math.sin(a0) * rr * 1.05, s.x + Math.cos(a1) * rr, s.y + Math.sin(a1) * rr * 1.05, 4, [1, 0.85, 0.9], 0.8 * s.k, 0.04);
+    }
+    Post.wantDim(0.4 * s.k);
+    Post.wantZoom(0.025 * s.k, s.x, s.y);
+    Post.aberrate(3 * s.k);
+    Post.shake(dt * 0.4 * s.k);
+    overlay.letterbox(0.4 * s.k);
+    sfx.loop('drone', 0.7 * s.k);
+    sfx.loop('hum', 0.4 * s.k);
+    if (s.t > 11 || releasing) this.endSing(false);
+    else if (s.thrown && s.t > 5) this.endSing(false);
+    return true;
+  }
+
+  startSing(h) {
+    const s = this.sing, { overlay, sfx, fx, phys } = this.ctx;
+    const base = Math.min(window.innerWidth, window.innerHeight);
+    s.on = true; s.t = 0; s.k = 0; s.thrown = false; s.eaten = 0; s.lost = 0; s.hold = 0; s.pulse = 0;
+    s.x = h.cx; s.y = h.cy; s.vx = 0; s.vy = 0;
+    s.well = phys.well(s.x, s.y, 4.6e7, base * 0.07);
+    phys.onEat = (p, w) => {
+      s.eaten++;
+      s.pulse = Math.min(0.5, s.pulse + 0.02);
+      if (s.eaten % 6 === 0) this.spark(s.x, s.y, rand(0, TAU), rand(200, 600), { life: 0.25, width: 2 });
+    };
+    overlay.callout('特異点', 'Singularity', { big: true, dur: 1.9 });
+    sfx.play('singularity');
+    Post.impact(0.1, CH.b);
+    Post.flashScreen(0.3, CH.b);
+    Post.freeze(0.08);
+    Post.shake(0.9);
+    Post.shockwave({ x: s.x, y: s.y, speed: 1500, width: 100, strength: 44, life: 0.8 });
+    fx.ring({ x: s.x, y: s.y, r0: 20, r1: Math.hypot(window.innerWidth, window.innerHeight) * 0.7, dur: 0.7, width: 30, a: CH.a, b: CH.b, noise: 0.1, intensity: 2 });
+    // the room's loose junk lifts off the floor
+    for (let i = 0; i < 14; i++) phys.shard(rand(60, window.innerWidth - 60), window.innerHeight * 0.98, rand(-100, 100), -rand(700, 1600), pick(['rock', 'glass', 'rock']), rand(10, 24), { life: 9 });
+    this.ctx.onMove(6);
+  }
+
+  endSing(silent) {
+    const s = this.sing, { sfx, fx, phys, overlay } = this.ctx;
+    if (!s.on) { s.rim.intensity = 0; return; }
+    s.on = false; s.thrown = false; s.cool = 1.5; s.rim.intensity = 0;
+    if (s.lens) s.lens.strength = 0;
+    phys.onEat = null;
+    if (s.well) {
+      if (!silent) {
+        // let go: everything still in orbit is ejected outward, and the hole pays back what it ate
+        const power = 900 + Math.min(1400, s.eaten * 9);
+        for (const p of phys.orbs) {
+          const dx = p.x - s.x, dy = p.y - s.y, d = Math.hypot(dx, dy) || 1;
+          p.vx = (dx / d) * power * rand(0.6, 1.3) + p.vx * 0.3; p.vy = (dy / d) * power * rand(0.6, 1.3) + p.vy * 0.3; p.life = p.age + 1.2;
+        }
+        phys.blast(s.x, s.y, 900, power * 2);
+        for (let i = 0; i < 60 + Math.min(120, s.eaten); i++) this.spark(s.x, s.y, rand(0, TAU), rand(700, 2600), { life: rand(0.3, 0.8), width: rand(2, 4) });
+        const diag = Math.hypot(window.innerWidth, window.innerHeight);
+        Post.impact(0.12, CH.b);
+        Post.flashScreen(0.6, CH.b);
+        Post.freeze(0.1);
+        Post.shake(1);
+        Post.punch(2.2, s.x, s.y);
+        Post.aberrate(16);
+        Post.shockwave({ x: s.x, y: s.y, speed: 2000, width: 130, strength: 60, life: 1 });
+        fx.ring({ x: s.x, y: s.y, r0: 20, r1: diag * 0.9, dur: 0.9, width: 40, a: CH.a, b: CH.b, noise: 0.1, intensity: 2.4 });
+        fx.glow({ x: s.x, y: s.y, s0: 60, s1: diag * 0.6, dur: 0.4, a: CH.a, b: [1, 1, 1], intensity: 2 });
+        overlay.sfxText('RELEASE', s.x, s.y - 120, 1.2, [255, 120, 230]);
+        sfx.play('nova');
+      }
+      phys.dropWell(s.well);
+      s.well = null;
+    }
   }
 
   // ---------- Mandala burst ----------

@@ -22,7 +22,7 @@ export class Overlay {
     this.signData = null; this.signShow = 0; this.signPop = []; this.signN = 0;
     this.hudData = null; this.hudShow = 0; this.hudT = 0;
     this.hasLetterSpacing = 'letterSpacing' in this.g;
-    this.puffs = []; this.knives = []; this.inkData = null; this.slashes = []; this.clockData = null; this.blasts = []; this.missileData = null; this.plates = []; this.shuData = null;
+    this.puffs = []; this.knives = []; this.inkData = null; this.slashes = []; this.clockData = null; this.blasts = []; this.missileData = null; this.plates = []; this.shuData = null; this.wind = []; this.phys = null; this.logData = null; this.holoData = null; this.holoModel = null; this.holeData = null;
   }
 
   resize(pr) {
@@ -137,6 +137,16 @@ export class Overlay {
   // Giant windmill shuriken, set every frame: {x, y, r, rot, a, vx, vy}
   setShuriken(d) { this.shuData = d; }
 
+  // A solid black event horizon with a thin photon ring: {x, y, r, k}
+  setHole(d) { this.holeData = d; }
+
+  // Iron Man style hologram: an exploded 3D reactor between the hands.
+  // d: {x, y, S, yaw, pitch, roll, e, k, t, a:[r,g,b], hands:[{x,y},{x,y}], d, label}
+  setHolo(d) { this.holoData = d; }
+
+  // A wooden log (the substitution jutsu), set every frame: {x, y, rot, len, w, a}
+  setLog(d) { this.logData = d; }
+
   // Homing missiles, set every frame: [{x, y, a}]
   setMissiles(list) { this.missileData = list; }
 
@@ -194,6 +204,22 @@ export class Overlay {
     if (this.clockData) this.drawClock(this.clockData);
     this.clockData = null;
     this.drawKnives(dt);
+    if (this.holeData) {
+      const d = this.holeData, g2 = this.g;
+      g2.save(); g2.globalAlpha = Math.min(1, d.k * 1.4);
+      g2.fillStyle = '#000'; g2.beginPath(); g2.arc(d.x, d.y, d.r * 0.96, 0, TAU); g2.fill();
+      g2.globalCompositeOperation = 'lighter';
+      const rg = g2.createRadialGradient(d.x, d.y, d.r * 0.9, d.x, d.y, d.r * 1.25);
+      rg.addColorStop(0, 'rgba(255,230,250,0.9)'); rg.addColorStop(0.35, 'rgba(255,120,220,0.45)'); rg.addColorStop(1, 'rgba(255,120,220,0)');
+      g2.fillStyle = rg; g2.beginPath(); g2.arc(d.x, d.y, d.r * 1.25, 0, TAU); g2.fill();
+      g2.restore();
+    }
+    this.holeData = null;
+    if (this.holoData) this.drawHolo(this.holoData);
+    this.holoData = null;
+    if (this.logData) this.drawLog(this.logData);
+    this.logData = null;
+    if (this.phys) this.phys.draw(g);
     this.drawPlates(dt);
     if (this.shuData) this.drawShuriken(this.shuData);
     this.shuData = null;
@@ -511,6 +537,15 @@ export class Overlay {
       p.t += dt;
       if (p.t > p.dur) { this.puffs.splice(i, 1); continue; }
       const k = p.t / p.dur;
+      for (const w of this.wind) {
+        const dx = p.x - w.x, dy = p.y - w.y, d = Math.hypot(dx, dy) || 1;
+        if (d < w.r) {
+          const f = 1 - d / w.r;
+          // your hand drags the air with it, and stirs a little curl into it
+          p.vx += (w.vx * 2.6 - dy / d * w.sp * 180) * f * dt * 3;
+          p.vy += (w.vy * 2.6 + dx / d * w.sp * 180) * f * dt * 3;
+        }
+      }
       const drag = Math.exp(-dt * 2.4);
       p.vx *= drag; p.vy = p.vy * drag - dt * 30;
       p.x += p.vx * dt; p.y += p.vy * dt;
@@ -685,6 +720,178 @@ export class Overlay {
       g.beginPath(); g.arc(d.x, d.y, d.r * 0.92, 0, TAU); g.stroke();
       g.restore();
     }
+  }
+
+  // Layers of the reactor, each a list of closed loops in unit space.
+  buildHoloModel() {
+    const ring = (r, n, z = 0, off = 0) => Array.from({ length: n }, (_, i) => [Math.cos(off + i / n * TAU) * r, Math.sin(off + i / n * TAU) * r]);
+    const gear = (r0, r1, teeth) => {
+      const pts = [];
+      for (let i = 0; i < teeth; i++) {
+        const a = i / teeth * TAU, w = TAU / teeth;
+        pts.push([Math.cos(a) * r0, Math.sin(a) * r0], [Math.cos(a + w * 0.15) * r1, Math.sin(a + w * 0.15) * r1],
+          [Math.cos(a + w * 0.45) * r1, Math.sin(a + w * 0.45) * r1], [Math.cos(a + w * 0.6) * r0, Math.sin(a + w * 0.6) * r0]);
+      }
+      return pts;
+    };
+    const coils = [];
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * TAU, w = TAU / 10 * 0.32;
+      coils.push([[Math.cos(a - w) * 0.66, Math.sin(a - w) * 0.66], [Math.cos(a - w * 0.7) * 0.9, Math.sin(a - w * 0.7) * 0.9],
+        [Math.cos(a + w * 0.7) * 0.9, Math.sin(a + w * 0.7) * 0.9], [Math.cos(a + w) * 0.66, Math.sin(a + w) * 0.66]]);
+    }
+    return [
+      { z: -1.5, loops: [ring(1.0, 64), ring(0.94, 64), gear(0.98, 1.06, 24)] },
+      { z: -1.0, loops: coils },
+      { z: -0.5, loops: [gear(0.56, 0.68, 20), ring(0.52, 48)] },
+      { z: 0.0, loops: [ring(0.46, 3, 0, -Math.PI / 2), ring(0.4, 48)] },
+      { z: 0.5, loops: [ring(0.3, 6), ring(0.24, 48)] },
+      { z: 1.0, loops: [ring(0.16, 6, 0, 0.5), ring(0.1, 32)] },
+    ];
+  }
+
+  drawHolo(d) {
+    const g = this.g;
+    const model = this.holoModel || (this.holoModel = this.buildHoloModel());
+    const [cr, cg, cb] = d.a.map((v) => v * 255 | 0);
+    const col = (a) => `rgba(${cr},${cg},${cb},${a})`;
+    const cy0 = Math.cos(d.yaw), sy0 = Math.sin(d.yaw), cp = Math.cos(d.pitch), sp = Math.sin(d.pitch), cr2 = Math.cos(d.roll), sr = Math.sin(d.roll);
+    const proj = (x, y, z) => {
+      const x1 = x * cy0 + z * sy0, z1 = -x * sy0 + z * cy0;
+      const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+      const x3 = x1 * cr2 - y2 * sr, y3 = x1 * sr + y2 * cr2;
+      const f = 1 / (1 + z2 * 0.22);
+      return [d.x + x3 * d.S * f, d.y + y3 * d.S * f, z2];
+    };
+    g.save();
+    g.globalAlpha = d.k;
+    g.globalCompositeOperation = 'lighter';
+    g.lineJoin = 'round';
+    // hologram base plate
+    g.strokeStyle = col(0.35); g.lineWidth = 1.2;
+    for (let i = 1; i <= 3; i++) {
+      g.beginPath(); g.ellipse(d.x, d.y + d.S * 1.25, d.S * (0.6 + i * 0.28), d.S * (0.6 + i * 0.28) * 0.22, 0, 0, TAU); g.stroke();
+    }
+    const spread = 0.55 + d.e * 1.05;
+    // connecting struts between layers, only visible once it is pulled apart
+    if (d.e > 0.05) {
+      g.strokeStyle = col(0.3 * Math.min(1, d.e * 2)); g.setLineDash([4, 5]); g.lineWidth = 1.2;
+      for (let a = 0; a < 6; a++) {
+        const ang = a / 6 * TAU + 0.3;
+        g.beginPath();
+        model.forEach((L, i) => {
+          const rr = 0.22 + i * 0.16, p = proj(Math.cos(ang) * rr, Math.sin(ang) * rr, L.z * spread * 0.5);
+          i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]);
+        });
+        g.stroke();
+      }
+      g.setLineDash([]);
+    }
+    // layers, back to front
+    const order = model.map((L, i) => ({ L, i })).sort((a, b) => proj(0, 0, a.L.z * spread * 0.5)[2] - proj(0, 0, b.L.z * spread * 0.5)[2]).reverse();
+    order.forEach(({ L, i }) => {
+      const z = L.z * spread * 0.5;
+      const depth = proj(0, 0, z)[2];
+      const a = 0.55 + 0.35 * (0.5 - depth * 0.25);
+      g.shadowColor = col(0.9); g.shadowBlur = 10;
+      for (const loop of L.loops) {
+        g.beginPath();
+        loop.forEach((pt, k) => {
+          const p = Array.isArray(pt[0]) ? null : proj(pt[0], pt[1], z);
+          if (!p) return;
+          k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]);
+        });
+        if (Array.isArray(loop[0]) && Array.isArray(loop[0][0])) continue;
+        g.closePath();
+        g.fillStyle = col(0.05); g.fill();
+        g.strokeStyle = col(a); g.lineWidth = 1.7; g.stroke();
+      }
+      // coils are loops of loops
+      if (L.loops[0] && Array.isArray(L.loops[0][0]) && Array.isArray(L.loops[0][0][0])) { /* not used */ }
+    });
+    // coil layer stores each coil as its own polygon
+    g.shadowBlur = 8;
+    const coilLayer = model[1];
+    const zc = coilLayer.z * spread * 0.5;
+    for (const c of coilLayer.loops) {
+      g.beginPath();
+      c.forEach((pt, k) => { const p = proj(pt[0], pt[1], zc); k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); });
+      g.closePath(); g.fillStyle = col(0.09); g.fill(); g.strokeStyle = col(0.85); g.lineWidth = 1.5; g.stroke();
+    }
+    // the core burns
+    const cp0 = proj(0, 0, model[5].z * spread * 0.5);
+    const glow = g.createRadialGradient(cp0[0], cp0[1], 0, cp0[0], cp0[1], d.S * 0.35);
+    glow.addColorStop(0, 'rgba(255,255,255,0.95)'); glow.addColorStop(0.25, col(0.7)); glow.addColorStop(1, col(0));
+    g.fillStyle = glow; g.fillRect(cp0[0] - d.S * 0.4, cp0[1] - d.S * 0.4, d.S * 0.8, d.S * 0.8);
+    // scan sweep
+    const sw = ((d.t * 0.7) % 1);
+    const sy = d.y - d.S * 1.1 + sw * d.S * 2.2;
+    g.shadowBlur = 0; g.strokeStyle = col(0.55 * (1 - Math.abs(sw - 0.5) * 1.2)); g.lineWidth = 2;
+    g.beginPath(); g.moveTo(d.x - d.S * 1.25, sy); g.lineTo(d.x + d.S * 1.25, sy); g.stroke();
+    // tether between the hands with a distance readout
+    const [A, B] = d.hands;
+    g.strokeStyle = col(0.6); g.lineWidth = 1.5; g.setLineDash([3, 6]);
+    g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(B.x, B.y); g.stroke(); g.setLineDash([]);
+    for (const P of d.hands) {
+      g.strokeStyle = col(0.95); g.lineWidth = 2;
+      const r = 14; g.beginPath(); g.arc(P.x, P.y, r, 0, TAU); g.stroke();
+      g.beginPath(); g.moveTo(P.x - r - 6, P.y); g.lineTo(P.x - r + 4, P.y); g.moveTo(P.x + r - 4, P.y); g.lineTo(P.x + r + 6, P.y); g.stroke();
+    }
+    // readouts with leader lines
+    g.shadowBlur = 0;
+    const fs = Math.max(10, Math.min(13, d.S * 0.11));
+    g.font = `600 ${fs}px "JetBrains Mono", ui-monospace, monospace`;
+    g.textBaseline = 'middle';
+    const lab = (px, py, tx, ty, text, right) => {
+      g.strokeStyle = col(0.55); g.lineWidth = 1;
+      g.beginPath(); g.moveTo(px, py); g.lineTo(tx, ty); g.lineTo(tx + (right ? 24 : -24), ty); g.stroke();
+      g.fillStyle = col(0.95); g.textAlign = right ? 'left' : 'right';
+      g.fillText(text, tx + (right ? 30 : -30), ty);
+    };
+    const p0 = proj(0.7, -0.7, model[0].z * spread * 0.5), p1 = proj(-0.6, 0.55, model[2].z * spread * 0.5), p2 = proj(0.2, 0.2, model[4].z * spread * 0.5);
+    const blink = Math.floor(d.t * 3) % 2 === 0;
+    lab(p0[0], p0[1], d.x + d.S * 1.35, d.y - d.S * 0.85, 'MK-L ARC REACTOR', true);
+    lab(p1[0], p1[1], d.x - d.S * 1.35, d.y + d.S * 0.6, `LAYERS 06  EXPLODE ${Math.round(d.e / 1.6 * 100)}%`, false);
+    lab(p2[0], p2[1], d.x + d.S * 1.3, d.y + d.S * 0.75, `OUTPUT ${(2.4 + d.e * 3.1).toFixed(1)} GJ/s${blink ? ' ▮' : ''}`, true);
+    g.textAlign = 'center';
+    g.fillStyle = col(0.9);
+    g.fillText(`${(Math.hypot(A.x - B.x, A.y - B.y) * 0.264).toFixed(0)} mm`, (A.x + B.x) / 2, (A.y + B.y) / 2 - 14);
+    g.restore();
+  }
+
+  drawLog(d) {
+    const g = this.g, L = d.len, R = d.w / 2;
+    g.save();
+    g.globalAlpha = d.a;
+    g.translate(d.x, d.y); g.rotate(d.rot);
+    g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 16; g.shadowOffsetY = 8;
+    const bark = g.createLinearGradient(0, -R, 0, R);
+    bark.addColorStop(0, '#9a6a36'); bark.addColorStop(0.35, '#6e4522'); bark.addColorStop(0.75, '#4a2c14'); bark.addColorStop(1, '#2c190b');
+    g.fillStyle = bark;
+    g.beginPath(); g.roundRect(-L / 2, -R, L, d.w, R * 0.35); g.fill();
+    g.shadowBlur = 0; g.shadowOffsetY = 0;
+    // bark grain
+    g.strokeStyle = 'rgba(20,10,4,0.55)'; g.lineWidth = 2;
+    for (let i = 0; i < 9; i++) {
+      const y = -R + (i + 0.5) / 9 * d.w, j = ((i * 37) % 11) - 5;
+      g.beginPath(); g.moveTo(-L / 2 + 8, y); g.bezierCurveTo(-L * 0.2, y + j, L * 0.2, y - j, L / 2 - 8, y + j * 0.4); g.stroke();
+    }
+    g.strokeStyle = 'rgba(255,220,160,0.35)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(-L / 2 + 10, -R * 0.7); g.lineTo(L / 2 - 10, -R * 0.7); g.stroke();
+    // cut end with growth rings
+    const ex = L / 2 - 2;
+    const eg = g.createRadialGradient(ex, 0, 2, ex, 0, R);
+    eg.addColorStop(0, '#f0cf98'); eg.addColorStop(1, '#c28d52');
+    g.fillStyle = eg;
+    g.beginPath(); g.ellipse(ex, 0, R * 0.38, R, 0, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(110,64,28,0.8)'; g.lineWidth = 1.4;
+    for (let k = 1; k <= 4; k++) { g.beginPath(); g.ellipse(ex, 0, R * 0.38 * k / 4.4, R * k / 4.4, 0, 0, TAU); g.stroke(); }
+    // rope band
+    g.fillStyle = '#d9c8a0';
+    g.fillRect(-L * 0.12, -R - 1, 16, d.w + 2);
+    g.strokeStyle = 'rgba(90,60,30,0.7)'; g.lineWidth = 1.5;
+    for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(-L * 0.12, -R + k * d.w / 4); g.lineTo(-L * 0.12 + 16, -R + k * d.w / 4 + 6); g.stroke(); }
+    g.restore();
   }
 
   drawPlates(dt) {

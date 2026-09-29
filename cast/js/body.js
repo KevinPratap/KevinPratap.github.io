@@ -2,6 +2,7 @@
 // runs a few times a second and its mask lands in a small canvas that the
 // compositor samples, so the aura hugs your outline like a transformation.
 import * as THREE from 'three';
+import { Projector } from './tracking.js';
 
 const TASKS_WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
@@ -22,6 +23,7 @@ export class Body {
     this.lastTs = 0;
     this.interval = 1000 / 15;
     this.img = null;
+    this.mdata = null; this.mw = 0; this.mh = 0;
   }
 
   // Loads lazily and quietly: if it fails, the app simply runs without the
@@ -65,7 +67,20 @@ export class Body {
     }
   }
 
+  // Mask value 0..1 at a screen position (CSS px), for physics collisions.
+  sample(sx, sy) {
+    if (!this.mdata) return 0;
+    const P = Projector;
+    const u = 1 - (sx - P.ox) / (P.vw * P.s), v = (sy - P.oy) / (P.vh * P.s);
+    if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
+    const x = Math.min(this.mw - 1, (u * this.mw) | 0), y = Math.min(this.mh - 1, (v * this.mh) | 0);
+    return this.mdata[y * this.mw + x];
+  }
+
   write(data, w, h) {
+    if (!this.mdata || this.mdata.length !== data.length) this.mdata = new Float32Array(data.length);
+    this.mdata.set(data);
+    this.mw = w; this.mh = h;
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w; this.canvas.height = h; this.img = null;
     }
@@ -84,5 +99,10 @@ export class Body {
     this.g.drawImage(src, 0, 0, this.canvas.width, this.canvas.height);
     this.texture.needsUpdate = true;
     this.ready = true;
+    const w = this.canvas.width, h = this.canvas.height;
+    const px = this.g.getImageData(0, 0, w, h).data;
+    this.mdata = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) this.mdata[i] = px[i * 4] / 255;
+    this.mw = w; this.mh = h;
   }
 }
