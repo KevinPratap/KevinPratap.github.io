@@ -132,11 +132,12 @@ export const CHARACTERS = {
     css: ['#1fe89a', '#c8ffe9'],
     grade: [0.84, 1.03, 0.94],
     moves: [
-      { id: 'clones', kanji: '影分身', name: 'Shadow Clones', how: 'Signs: two fingers, fist, then clap your hands together.' },
+      { id: 'clones', kanji: '影分身', name: 'Shadow Clones', how: 'Cross the two raised fingers of both hands (the clone sign). Or chain: two fingers, fist, clap.' },
       { id: 'smoke', kanji: '煙遁', name: 'Smoke Vanish', how: 'Signs: open palm, fist, then point a finger.' },
       { id: 'kunai', kanji: '苦無', name: 'Kunai Storm', how: 'Signs: point, two fingers, then open palm.' },
       { id: 'bind', kanji: '影縛', name: 'Shadow Binding', how: 'Four signs: fist, point, two fingers, then clap.' },
       { id: 'eclipse', kanji: '影蝕', name: 'Grand Eclipse', how: 'Five signs: fist, two fingers, point, open palm, then clap.' },
+      { id: 'shuriken', kanji: '風魔手裏剣', name: 'Windmill Shuriken', how: 'Hold an open palm still for a second. Flick to throw it. It comes back to your hand.' },
     ],
   },
   mystral: {
@@ -153,6 +154,7 @@ export const CHARACTERS = {
       { id: 'mirror', kanji: '鏡像界', name: 'Mirror Dimension', how: 'Two fingers up on both hands, held still.' },
       { id: 'crescent', kanji: '月光斬', name: 'Crescent Slash', how: 'Two fingers up, then swipe fast.' },
       { id: 'time', kanji: '時廻', name: 'Time Loop', how: 'Press both hands together and hold. Time runs backward.' },
+      { id: 'whip', kanji: '魔鞭', name: 'Eldritch Whip', how: 'Pinch thumb and index finger together, then swing. Snap it fast to crack.' },
     ],
   },
   ferrum: {
@@ -171,9 +173,10 @@ export const CHARACTERS = {
       { id: 'missile', kanji: '追尾弾', name: 'Missile Volley', how: 'Two fingers up, then flick.' },
       { id: 'thrusters', kanji: '飛行', name: 'Thrusters', how: 'Both palms open, fingers pointing down.' },
       { id: 'suit', kanji: '装着', name: 'Suit-Up', how: 'Bring both fists together and hold. Powers up every move.' },
+      { id: 'unibeam', kanji: '胸部砲', name: 'Unibeam', how: 'Both palms open side by side, held still. Move your hands to steer the beam.' },
     ],
   },
 };
 
 // Characters for the Google Fonts subset request (only these glyphs download).
-export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着'))).join('');
+export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着十風手裏剣胸部砲'))).join('');

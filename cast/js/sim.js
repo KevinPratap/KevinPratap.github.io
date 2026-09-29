@@ -9,7 +9,7 @@ const FINGERS = [
 ];
 
 // Hand model in units of wrist-to-knuckle length. y is down, -z faces the camera.
-const POSES = { point: [1, 0.02, 0.02, 0.02], two: [1, 1, 0.02, 0.02] };
+const POSES = { point: [1, 0.02, 0.02, 0.02], two: [1, 1, 0.02, 0.02], pinch: [0.55, 0.85, 0.85, 0.85] };
 
 function buildHand(open, pose) {
   const P = new Array(21);
@@ -35,6 +35,11 @@ function buildHand(open, pose) {
       P[m + 1 + j] = p;
     }
   });
+  if (pose === 'pinch') {
+    // thumb tip meets the index tip
+    P[4] = [P[8][0] - 0.03, P[8][1] + 0.03, P[8][2]];
+    P[3] = [(P[2][0] + P[4][0]) / 2, (P[2][1] + P[4][1]) / 2, (P[2][2] + P[4][2]) / 2];
+  }
   return P;
 }
 
@@ -127,7 +132,14 @@ function kageScript() {
   t = signChain(['open', 'fist', 'point'], t, out) + 2.2;
   t = signChain(['point', 'two', 'open'], t, out) + 2.2;
   t = signChain(['fist', 'point', 'two', 'clap'], t, out) + 3.0;
-  t = signChain(['fist', 'two', 'point', 'open', 'clap'], t, out);
+  t = signChain(['fist', 'two', 'point', 'open', 'clap'], t, out) + 5.0;
+  // the clone sign: two fingers up on both hands, crossed together
+  out.R.push([t, 0.53, 0.55, 0.16, 0.5, 'two', -0.5], [t + 1.0, 0.53, 0.55, 0.16, 0.5, 'two', -0.5], [t + 1.1, null]);
+  out.L.push([t, 0.47, 0.55, 0.16, 0.5, 'two', 0.5], [t + 1.0, 0.47, 0.55, 0.16, 0.5, 'two', 0.5], [t + 1.1, null]);
+  t += 2.2;
+  // windmill shuriken: open palm held, flick, then catch it on its way back
+  out.R.push([t, 0.62, 0.56, 0.16, 0.95], [t + 1.5, 0.62, 0.56, 0.16, 0.95], [t + 1.58, 0.85, 0.36, 0.16, 0.95], [t + 4.6, 0.85, 0.36, 0.16, 0.95], [t + 4.7, null]);
+  out.len = Math.ceil(t + 5.5);
   out.R.push([out.len, null]); out.L.push([out.len, null]);
   return out;
 }
@@ -149,13 +161,16 @@ function mystralScript() {
     [10.0, 0.6, 0.5, 0.16, 0.5, 'two', -0.2], [13.2, 0.6, 0.5, 0.16, 0.5, 'two', -0.2], [13.3, null],
     [14.5, 0.3, 0.64, 0.16, 0.5, 'two', -0.3], [15.2, 0.3, 0.64, 0.16, 0.5, 'two', -0.3], [15.4, 0.86, 0.3, 0.16, 0.5, 'two', -0.3], [16.0, 0.86, 0.3, 0.16, 0.5, 'two', -0.3], [16.1, null],
     [18.0, 0.53, 0.56, 0.16, 0.6], [23.0, 0.53, 0.56, 0.16, 0.6], [23.2, null],
+    // eldritch whip: pinch, swing, snap
+    [24.4, 0.6, 0.4, 0.16, 0.5, 'pinch'], [25.4, 0.45, 0.42, 0.16, 0.5, 'pinch'], [26.0, 0.7, 0.34, 0.16, 0.5, 'pinch'],
+    [26.12, 0.36, 0.48, 0.16, 0.5, 'pinch'], [26.8, 0.55, 0.4, 0.16, 0.5, 'pinch'], [27.4, 0.55, 0.4, 0.16, 0.5, 'pinch'], [27.5, null],
   ];
   const L = [[0, null],
     [0.5, 0.34, 0.56, 0.16, 0.95], [3.0, 0.34, 0.56, 0.16, 0.95], [3.1, null],
     [10.0, 0.4, 0.5, 0.16, 0.5, 'two', 0.2], [13.2, 0.4, 0.5, 0.16, 0.5, 'two', 0.2], [13.3, null],
     [18.0, 0.47, 0.56, 0.16, 0.6], [23.0, 0.47, 0.56, 0.16, 0.6], [23.2, null],
   ];
-  return { len: 24, R, L };
+  return { len: 28, R, L };
 }
 
 function ferrumScript() {
@@ -167,12 +182,15 @@ function ferrumScript() {
     [12.0, 0.62, 0.34, 0.16, 0.95, null, Math.PI], [15.0, 0.62, 0.34, 0.16, 0.95, null, Math.PI], [15.1, null],
     [16.5, 0.53, 0.58, 0.17, 0.05], [19.0, 0.53, 0.58, 0.17, 0.05], [19.1, null],
     [21.6, 0.66, 0.56, 0.16, 0.95], [22.9, 0.66, 0.56, 0.16, 0.95], [23.02, 0.95, 0.4, 0.16, 0.95], [23.5, 0.95, 0.4, 0.16, 0.95], [23.6, null],
+    // unibeam: both palms side by side, then sweep
+    [24.5, 0.6, 0.45, 0.16, 0.95], [26.3, 0.6, 0.45, 0.16, 0.95], [27.3, 0.74, 0.4, 0.16, 0.95], [28.4, 0.46, 0.4, 0.16, 0.95], [28.8, 0.46, 0.4, 0.16, 0.95], [28.9, null],
   ];
   const L = [[0, null],
     [12.0, 0.38, 0.34, 0.16, 0.95, null, Math.PI], [15.0, 0.38, 0.34, 0.16, 0.95, null, Math.PI], [15.1, null],
     [16.5, 0.47, 0.58, 0.17, 0.05], [19.0, 0.47, 0.58, 0.17, 0.05], [19.1, null],
+    [24.5, 0.4, 0.45, 0.16, 0.95], [26.3, 0.4, 0.45, 0.16, 0.95], [27.3, 0.54, 0.4, 0.16, 0.95], [28.4, 0.26, 0.4, 0.16, 0.95], [28.8, 0.26, 0.4, 0.16, 0.95], [28.9, null],
   ];
-  return { len: 25, R, L };
+  return { len: 30, R, L };
 }
 
 SCRIPTS.kage = kageScript();

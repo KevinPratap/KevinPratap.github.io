@@ -96,13 +96,14 @@ export class HandState {
     this.ext = [0.5, 0.5, 0.5, 0.5]; this.extT = [0.5, 0.5, 0.5, 0.5];
     this.point = false; this.pointTime = 0; this.two = false; this.twoTime = 0;
     this.tipX = 0; this.tipY = 0; this.pdx = 0; this.pdy = -1;
+    this.pinch = false; this.pinchX = 0; this.pinchY = 0;
     this.fist = false; this.isOpen = false; this.cupped = false; this.still = false;
     this.stillTime = 0; this.lostTime = 0;
     this.flick = false; this.thrust = false;
     this.justAppeared = false; this._appeared = false; this._fresh = true;
     this.prevSpeed = 0; this.prevRate = 0; this.flickCool = 0; this.thrustCool = 0;
     this.db = { fist: new Debounced(), open: new Debounced(), cup: new Debounced(0.06, 0.12),
-      point: new Debounced(0.08, 0.12), two: new Debounced(0.08, 0.12) };
+      point: new Debounced(0.08, 0.12), two: new Debounced(0.08, 0.12), pinch: new Debounced(0.06, 0.12) };
   }
 
   // Palm center of a raw detection, for matching detections to slots.
@@ -156,7 +157,7 @@ export class HandState {
     if (this.lostTime > CONFIG.lostGrace) {
       this.present = false;
       this.speed = 0; this.vx = 0; this.vy = 0; this.scaleRate = 0;
-      this.fist = this.isOpen = this.cupped = this.still = this.point = this.two = false;
+      this.fist = this.isOpen = this.cupped = this.still = this.point = this.two = this.pinch = false;
       this.stillTime = 0; this.pointTime = 0; this.twoTime = 0;
     }
   }
@@ -214,6 +215,13 @@ export class HandState {
       this.tipX = b.x; this.tipY = b.y;
     }
 
+    // Pinch: thumb tip on index tip, index not tucked into a fist.
+    {
+      const d = Math.hypot(p[4].x - p[8].x, p[4].y - p[8].y) / this.scale;
+      const raw = this.pinch ? d < 0.42 : d < 0.28 && E[0] > 0.12;
+      this.pinch = this.db.pinch.update(raw, dt);
+      this.pinchX = (p[4].x + p[8].x) / 2; this.pinchY = (p[4].y + p[8].y) / 2;
+    }
     const sign = this.point || this.two;
     this.fist = !sign && this.db.fist.update(this.fist ? this.open < CONFIG.fistExit : this.open < CONFIG.fistEnter, dt);
     this.isOpen = this.db.open.update(this.isOpen ? this.open > CONFIG.openExit : this.open > CONFIG.openEnter, dt);

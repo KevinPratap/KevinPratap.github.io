@@ -16,6 +16,7 @@ const SIGNS = {
   point: { k: '午', w: 'POINT' },
   open: { k: '辰', w: 'OPEN PALM' },
   clap: { k: '合', w: 'CLAP' },
+  cross: { k: '十', w: 'CLONE SIGN' },
 };
 
 // Longest first. No recipe is the ending of another, so a chain never
@@ -30,7 +31,10 @@ const RECIPES = [
 
 const HOLD = 0.2;       // seconds a sign must be held to count
 const CHAIN_GAP = 2.6;  // seconds before a half-made chain is forgotten
-const CLONE_X = [-0.36, 0.36, -0.7, 0.7];
+// Formation: two clones close beside you, two further back. Offsets are
+// fractions of screen width; scale shrinks them toward the floor.
+const CLONE_X = [-0.27, 0.27, -0.44, 0.44];
+const CLONE_S = [0.8, 0.8, 0.62, 0.62];
 
 const oneHand = (h) => (h.two ? 'two' : h.point ? 'point' : h.fist ? 'fist' : h.isOpen ? 'open' : null);
 
@@ -55,6 +59,9 @@ export class Kage {
     }
     this.ecl = { on: false, t: 0, x: 0, y: 0, r: 0, lens: null, glow: new FXQuad(S, 'glow', { a: CH.a, b: CH.b, intensity: 0, param: [2.2, 0, 0, 0] }), rays: 0 };
     this.wisp = 0;
+    this.near = { t: -9, sign: false };
+    this.crossT = 0; this.cloneCool = 0;
+    this.shu = { state: 'none', t: 0, x: 0, y: 0, vx: 0, vy: 0, rot: 0, spin: 0, r: 60, hold: 0, slot: 'R', bounces: 0, k: 0 };
   }
 
   enter() {
@@ -63,6 +70,7 @@ export class Kage {
   }
 
   exit() {
+    this.shu.state = 'none'; this.shu.hold = 0;
     this.seq.length = 0;
     this.cand = null; this.candT = 0; this.held = null;
     this.timers.length = 0;
@@ -83,7 +91,7 @@ export class Kage {
   spark(x, y, a, speed, o = {}) {
     return this.ctx.streaks.spawn({
       x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, drag: o.drag ?? 1.6, grav: o.grav ?? 0,
-      life: o.life ?? rand(0.3, 0.6), c: pick(JADE), bright: o.bright ?? 2.1,
+      life: o.life ?? rand(0.3, 0.6), c: o.c || pick(JADE), bright: o.bright ?? 2.1,
       width: o.width ?? rand(1.5, 3), stretch: o.stretch ?? 0.04, fade: 1.2, fn: o.fn,
     });
   }
@@ -108,11 +116,14 @@ export class Kage {
   }
 
   // ---------- sign recognition ----------
-  classify(L, R) {
+  classify(L, R, time) {
     if (L.present && R.present) {
       const sc = (L.scale + R.scale) / 2;
       const d = Math.hypot(L.cx - R.cx, L.cy - R.cy) / sc;
       const pose = L.point || L.two || R.point || R.two;
+      const fingers = (L.point || L.two) && (R.point || R.two);
+      if (d < CONFIG.touchDist * 2.2) this.near = { t: time, sign: fingers || (pose && d < CONFIG.touchDist * 1.4) };
+      if (fingers && d < CONFIG.touchDist * 2.0) return 'cross';
       if (d < CONFIG.touchDist * 1.35 && !pose) return 'clap';
       const a = oneHand(L), b = oneHand(R);
       if (a === b) return a;
@@ -121,7 +132,32 @@ export class Kage {
       return null;
     }
     const h = L.present ? L : R.present ? R : null;
+    // Hands pressed together often hide one from the tracker: if they were
+    // touching a moment ago and one just vanished, that's still the sign.
+    if (h && time - this.near.t < 0.45) {
+      if (this.near.sign && (h.point || h.two)) return 'cross';
+      if (!this.near.sign && !h.point && !h.two) return 'clap';
+    }
     return h ? oneHand(h) : null;
+  }
+
+  // What the chain so far could still become, for the on-screen hint.
+  hint() {
+    if (!this.seq.length) return null;
+    let best = null;
+    for (const r of RECIPES) {
+      for (let k = Math.min(this.seq.length, r.seq.length - 1); k >= 1; k--) {
+        const tail = this.seq.slice(-k);
+        if (tail.every((s, i) => s === r.seq[i])) {
+          if (!best || k > best.k || (k === best.k && r.seq.length < best.r.seq.length)) best = { r, k };
+          break;
+        }
+      }
+    }
+    if (!best) return null;
+    const next = best.r.seq[best.k];
+    const name = CH.moves[best.r.move].name;
+    return `${name.toUpperCase()}  ›  ${SIGNS[next].k} ${SIGNS[next].w}`;
   }
 
   register(sign, time, hands) {
@@ -169,7 +205,16 @@ export class Kage {
     const L = hands.L, R = hands.R;
     const any = L.present || R.present;
 
-    const sign = this.classify(L, R);
+    let sign = this.classify(L, R, time);
+    // the clone sign is its own instant jutsu, not a link in a chain
+    this.cloneCool -= dt;
+    this.crossT = sign === 'cross' ? this.crossT + dt : 0;
+    if (this.crossT > 0.28 && this.cloneCool <= 0 && !this.ecl.on) {
+      this.cloneCool = 2.5;
+      this.seq.length = 0;
+      this.cast(RECIPES.find((r) => r.fn === 'clones'), hands);
+    }
+    if (sign === 'cross') sign = null;
     if (sign !== this.cand) { this.cand = sign; this.candT = 0; if (sign !== this.held) this.held = null; } else if (sign) this.candT += dt;
     if (sign && this.candT >= HOLD && this.held !== sign && !(this.seq[this.seq.length - 1] === sign && time - this.lastReg < 1.0)) {
       this.held = sign;
@@ -182,7 +227,7 @@ export class Kage {
         slots: 5,
         seq: this.seq.map((s) => SIGNS[s].k),
         pending: sign && this.held !== sign ? { k: SIGNS[sign].k, p: clamp(this.candT / HOLD, 0, 1) } : null,
-        label: sign ? SIGNS[sign].w : '',
+        label: this.hint() || (this.crossT > 0 ? 'CLONE SIGN' : sign ? SIGNS[sign].w : ''),
         y: 0.68,
       });
     }
@@ -200,6 +245,7 @@ export class Kage {
     }
     if (this.wisp <= 0) this.wisp = 0.06;
 
+    this.updateShuriken(dt, time, hands);
     this.updateClones(dt, time);
     this.updateBind(dt, time);
     this.updateEclipse(dt, time);
@@ -210,11 +256,125 @@ export class Kage {
     return [lv, lv];
   }
 
+  // ---------- Windmill Shuriken ----------
+  // Hold an open palm still: a giant shuriken spins up over it and follows
+  // your hand. Flick to throw; it ricochets off the edges and flies back.
+  updateShuriken(dt, time, hands) {
+    const s = this.shu, { sfx, fx, overlay } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight;
+    const h = hands[s.slot];
+    s.t += dt;
+    if (s.state === 'none') {
+      let cand = null;
+      for (const hh of [hands.L, hands.R]) {
+        if (hh.present && hh.isOpen && hh.still && !hh.point && !hh.two && !hh.pinch && !(hands.L.present && hands.R.present && Math.hypot(hands.L.cx - hands.R.cx, hands.L.cy - hands.R.cy) / hh.scale < CONFIG.touchDist * 2)) cand = hh;
+      }
+      if (cand && this.seq.length <= 1 && !this.ecl.on && !this.bindS.on) {
+        s.hold = s.slot === cand.slot ? s.hold + dt : 0;
+        s.slot = cand.slot;
+        const k = clamp(s.hold / 0.9, 0, 1);
+        if (k > 0.15 && Math.random() < dt * 60 * k) {
+          const a = rand(0, TAU), d = cand.scale * rand(1.2, 2);
+          this.spark(cand.cx + Math.cos(a) * d, cand.cy + Math.sin(a) * d, a + Math.PI, d * 4, { life: 0.25, drag: 0 });
+        }
+        if (s.hold > 0.9) {
+          s.state = 'held'; s.t = 0; s.k = 0; s.x = cand.cx; s.y = cand.cy - cand.scale * 0.3; s.spin = 0; s.rot = 0;
+          this.seq.length = 0;
+          overlay.callout('風魔手裏剣', 'Windmill Shuriken');
+          overlay.smoke(s.x, s.y, 8, 0.9, { spread: 1 });
+          sfx.play('poof', 0.7);
+          sfx.play('kunai');
+          fx.ring({ x: s.x, y: s.y, r0: 20, r1: cand.scale * 3, dur: 0.35, width: 8, a: CH.a, b: CH.b, intensity: 1.6 });
+          this.ctx.onMove(5);
+        }
+      } else s.hold = Math.max(0, s.hold - dt * 3);
+      return;
+    }
+    s.r = clamp((h.present ? h.scale : 80) * 1.25, 55, 120);
+    s.rot += s.spin * dt;
+    if (s.state === 'held') {
+      s.k = Math.min(1, s.k + dt * 4);
+      s.spin = damp(s.spin, 9 + (h.present ? h.speed * 3 : 0), 4, dt);
+      if (h.present) {
+        s.x = damp(s.x, h.cx, 20, dt); s.y = damp(s.y, h.cy - h.scale * 0.3, 20, dt);
+        s.lost = 0;
+        if (h.flick && s.t > 0.2) {
+          const d = h.dir();
+          s.vx = d.x * 2100; s.vy = d.y * 2100;
+          s.state = 'fly'; s.t = 0; s.bounces = 0; s.spin = 38;
+          sfx.play('whip'); sfx.play('kunai');
+          Post.shake(0.3); Post.aberrate(6);
+          this.level = 1.6;
+        }
+      } else {
+        s.lost = (s.lost || 0) + dt;
+        if (s.lost > 1.2) this.dropShuriken();
+      }
+      if (h.present && h.fist) this.dropShuriken();
+    } else if (s.state === 'fly' || s.state === 'back') {
+      if (s.state === 'fly') {
+        // a slight curve, like it's riding the wind
+        const c = Math.cos(dt * 0.9), sn = Math.sin(dt * 0.9);
+        const vx = s.vx * c - s.vy * sn; s.vy = s.vx * sn + s.vy * c; s.vx = vx;
+        if (s.t > 0.75 || s.bounces >= 2) { s.state = 'back'; s.t = 0; }
+      } else {
+        const tx = h.present ? h.cx : W / 2, ty = h.present ? h.cy - h.scale * 0.3 : H * 0.5;
+        const dx = tx - s.x, dy = ty - s.y, d = Math.hypot(dx, dy) || 1;
+        const sp = Math.min(3000, Math.hypot(s.vx, s.vy) + 2600 * dt);
+        s.vx = damp(s.vx, (dx / d) * sp, 5, dt); s.vy = damp(s.vy, (dy / d) * sp, 5, dt);
+        if (d < s.r * 0.8) {
+          if (h.present) {
+            s.state = 'held'; s.t = 0;
+            sfx.play('lock'); Post.shake(0.25);
+            fx.ring({ x: s.x, y: s.y, r0: 10, r1: s.r * 2.4, dur: 0.3, width: 8, a: CH.a, b: CH.b, intensity: 1.8 });
+            for (let i = 0; i < 18; i++) this.spark(s.x, s.y, rand(0, TAU), rand(300, 800));
+          } else this.dropShuriken();
+        }
+        if (s.t > 3) this.dropShuriken();
+      }
+      s.x += s.vx * dt; s.y += s.vy * dt;
+      // ricochet off the frame
+      const m = s.r * 0.6;
+      let hit = false;
+      if (s.x < m && s.vx < 0) { s.x = m; s.vx *= -1; hit = true; }
+      if (s.x > W - m && s.vx > 0) { s.x = W - m; s.vx *= -1; hit = true; }
+      if (s.y < m && s.vy < 0) { s.y = m; s.vy *= -1; hit = true; }
+      if (s.y > H - m && s.vy > 0) { s.y = H - m; s.vy *= -1; hit = true; }
+      if (hit && s.state === 'fly') {
+        s.bounces++;
+        sfx.play('crack');
+        Post.shake(0.45); Post.freeze(0.04);
+        Post.shockwave({ x: s.x, y: s.y, speed: 1000, width: 50, strength: 20, life: 0.4 });
+        overlay.crack(clamp(s.x, 4, W - 4), clamp(s.y, 4, H - 4), 0.5);
+        for (let i = 0; i < 30; i++) this.spark(s.x, s.y, rand(0, TAU), rand(400, 1400), { c: [1, 0.9, 0.6] });
+      }
+      // sparks shed off the blades, and a wind tear behind it
+      for (let i = 0; i < 3; i++) {
+        const a = s.rot + i * TAU / 3;
+        this.spark(s.x + Math.cos(a) * s.r, s.y + Math.sin(a) * s.r, a + Math.PI / 2, rand(200, 500), { life: 0.2, width: 1.6 });
+      }
+      sfx.loop('hum', 0.5);
+    }
+    overlay.setShuriken({ x: s.x, y: s.y, r: s.r * (0.3 + 0.7 * easeOutCubic(s.k)), rot: s.rot, a: s.k, vx: s.state === 'held' ? 0 : s.vx, vy: s.state === 'held' ? 0 : s.vy, spin: s.spin });
+  }
+
+  dropShuriken() {
+    const s = this.shu;
+    if (s.state === 'none') return;
+    this.ctx.overlay.smoke(s.x, s.y, 8, 0.9, { spread: 1 });
+    this.ctx.sfx.play('poof', 0.6);
+    s.state = 'none'; s.hold = 0; s.k = 0;
+  }
+
   // ---------- Shadow Clones ----------
   clones(c, hands) {
     const { overlay, sfx } = this.ctx;
-    const W = window.innerWidth;
-    this.clone.on = true; this.clone.t = 0; this.clone.life = 9; this.clone.n = 0; this.clone.popT = 0; this.clone.cx = c.x; this.clone.cy = c.y;
+    const W = window.innerWidth, H = window.innerHeight;
+    this.clone.on = true; this.clone.t = 0; this.clone.life = 10; this.clone.n = 0; this.clone.popT = 0;
+    // you stand roughly under your hands; the clones line up around that
+    this.clone.ax = clamp(c.x, W * 0.3, W * 0.7); this.clone.cx = this.clone.ax; this.clone.cy = H * 0.62;
+    Post.clAnchor = this.clone.ax;
+    c = { x: this.clone.ax, y: H * 0.62 };
     overlay.callout('影分身', 'Shadow Clones', { big: true, dur: 1.5 });
     sfx.play('clone');
     sfx.play('poof');
@@ -226,7 +386,7 @@ export class Kage {
     for (let i = 0; i < 4; i++) {
       this.after(0.12 * i, () => {
         this.clone.n = i + 1;
-        const x = c.x + CLONE_X[i] * W, y = c.y;
+        const x = this.clonePos(i), y = H * (1 - 0.45 * CLONE_S[i]);
         this.puff(x, y, 10, 1.1, 0.6);
         this.ctx.overlay.smoke(x, y - 20, 16, 1.5, { spread: 1.4 });
         this.ctx.overlay.smoke(x, y + 120, 8, 1.2, { spread: 1.8 });
@@ -239,20 +399,30 @@ export class Kage {
     }
   }
 
+  // Screen x of clone i, kept inside the frame whichever side you stand on.
+  clonePos(i) {
+    const W = window.innerWidth, ax = this.clone.ax ?? W / 2;
+    let x = ax + CLONE_X[i] * W;
+    if (x < W * 0.08 || x > W * 0.92) x = ax - CLONE_X[i] * W * 1.55;
+    return clamp(x, W * 0.08, W * 0.92);
+  }
+
   updateClones(dt, time) {
     const cl = this.clone;
     if (!cl.on) {
-      for (let i = 0; i < 4; i++) Post.clone(i, CLONE_X[i] * window.innerWidth, 0, 0);
+      for (let i = 0; i < 4; i++) Post.clone(i, CLONE_X[i] * window.innerWidth, 0, 0, CLONE_S[i]);
       return;
     }
+    Post.clAnchor = cl.ax;
     cl.t += dt;
     const W = window.innerWidth;
     if (cl.t > cl.life - 0.6) {
       // dismissed clones pop one by one
       cl.popT = (cl.popT || 0) - dt;
       if (cl.popT <= 0 && cl.n > 0) {
-        this.puff(cl.cx + CLONE_X[cl.n - 1] * W, cl.cy, 6, 1, 0.6);
-        this.ctx.overlay.smoke(cl.cx + CLONE_X[cl.n - 1] * W, cl.cy, 14, 1.3, { spread: 1.3 });
+        const px = this.clonePos(cl.n - 1), py = window.innerHeight * (1 - 0.45 * CLONE_S[cl.n - 1]);
+        this.puff(px, py, 6, 1, 0.6);
+        this.ctx.overlay.smoke(px, py, 14, 1.3, { spread: 1.3 });
         this.ctx.sfx.play('poof', 0.6);
         cl.n--;
         cl.popT = 0.14;
@@ -260,7 +430,7 @@ export class Kage {
       if (cl.n === 0) cl.on = false;
     }
     for (let i = 0; i < 4; i++) {
-      Post.clone(i, CLONE_X[i] * W + Math.sin(time * 1.6 + i * 1.7) * 9, Math.sin(time * 2.1 + i) * 4, i < cl.n ? 1 : 0);
+      Post.clone(i, this.clonePos(i) - cl.ax + Math.sin(time * 1.6 + i * 1.7) * 9, 0, i < cl.n ? 1 : 0, CLONE_S[i]);
     }
     if (cl.n > 0) this.ctx.sfx.loop('hum', 0.25);
   }
@@ -479,8 +649,9 @@ export class Kage {
     sfx.play('awaken');
     Post.freeze(0.08);
     // the whole squad joins the eclipse
-    this.clone.on = true; this.clone.t = 0; this.clone.life = 5.2; this.clone.n = 4; this.clone.popT = 0; this.clone.cx = c.x; this.clone.cy = c.y;
-    for (let i = 0; i < 4; i++) this.puff(c.x + CLONE_X[i] * W, c.y, 16, 1);
+    this.clone.on = true; this.clone.t = 0; this.clone.life = 5.2; this.clone.n = 4; this.clone.popT = 0;
+    this.clone.ax = clamp(c.x, W * 0.3, W * 0.7); Post.clAnchor = this.clone.ax;
+    for (let i = 0; i < 4; i++) this.ctx.overlay.smoke(this.clonePos(i), H * 0.7, 10, 1.3, { spread: 1.3 });
   }
 
   updateEclipse(dt, time) {

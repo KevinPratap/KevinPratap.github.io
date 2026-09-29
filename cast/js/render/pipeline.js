@@ -47,6 +47,7 @@ uniform float uEdge;
 uniform vec3 uEdgeCol;
 uniform vec4 uCl[4];
 uniform vec3 uClCol;
+uniform float uClA;
 uniform float uHasMask;
 uniform float uKal;
 uniform float uKalRot;
@@ -179,9 +180,20 @@ void main() {
     for (int i = 0; i < 4; i++) {
       vec4 c = uCl[i];
       if (c.z <= 0.0) continue;
-      vec2 q2 = p - c.xy;
-      float mr = uHasMask > 0.5 ? texture2D(tMask, vidUv(q2)).r : 0.45;
-      float m = uHasMask > 0.5 ? smoothstep(0.35, 0.7, mr) : 0.45;
+      // each clone is you, scaled about a point on the floor under you, so
+      // smaller clones stand further back and always fit in the frame
+      vec2 A = vec2(uClA, uRes.y);
+      float cs = max(c.w, 0.2);
+      vec2 q2 = A + (p - A - c.xy) / cs;
+      float m;
+      if (uHasMask > 0.5) {
+        m = smoothstep(0.35, 0.7, texture2D(tMask, vidUv(q2)).r);
+      } else {
+        // no segmentation: a soft body-shaped window around where you stand
+        vec2 dv = (q2 - vec2(uClA, uRes.y * 0.72)) / vec2(uRes.x * 0.2, uRes.y * 0.5);
+        m = 1.0 - smoothstep(0.7, 1.0, length(dv));
+      }
+      if (q2.x < 0.0 || q2.x > uRes.x || q2.y < 0.0) m = 0.0;
       vec3 cv = texture2D(tVideo, vidUv(q2)).rgb;
       float cl = dot(cv, vec3(0.299, 0.587, 0.114));
       cv = mix(cv, vec3(cl) * uClCol * 1.5, 0.22);
@@ -190,14 +202,14 @@ void main() {
       g = mix(g, cv, vis);
       if (uHasMask > 0.5) {
         // chakra outline: the mask's edge, found from its neighbours
-        float e = 7.0;
+        float e = 7.0 / cs;
         float mn = min(min(texture2D(tMask, vidUv(q2 + vec2(e, 0.0))).r, texture2D(tMask, vidUv(q2 - vec2(e, 0.0))).r),
                        min(texture2D(tMask, vidUv(q2 + vec2(0.0, e))).r, texture2D(tMask, vidUv(q2 - vec2(0.0, e))).r));
         float mx = max(max(texture2D(tMask, vidUv(q2 + vec2(e, 0.0))).r, texture2D(tMask, vidUv(q2 - vec2(e, 0.0))).r),
                        max(texture2D(tMask, vidUv(q2 + vec2(0.0, e))).r, texture2D(tMask, vidUv(q2 - vec2(0.0, e))).r));
         float rim = clamp((mx - mn) * 1.6, 0.0, 1.0);
         float flick = 0.8 + 0.2 * sin(uTime * 13.0 + q2.y * 0.05);
-        g += uClCol * rim * c.z * front * 1.4 * flick;
+        g += uClCol * rim * c.z * front * 1.2 * flick;
       }
     }
   }
@@ -322,14 +334,14 @@ export const Post = {
   transients: [],
   persistent: [],
   aura: 0, auraTarget: 0, auraA: [1, 0.7, 0.2], auraB: [1, 0.95, 0.7],
-  clones: [0, 1, 2, 3].map(() => ({ dx: 0, dy: 0, a: 0, ta: 0 })), clCol: [0.3, 1, 0.75], maskReady: false,
+  clones: [0, 1, 2, 3].map(() => ({ dx: 0, dy: 0, a: 0, ta: 0, s: 1 })), clAnchor: 0, clCol: [0.3, 1, 0.75], maskReady: false,
   kal: 0, kalTarget: 0, kalSeg: 6, kalRot: 0,
   freezeT: 0, glitch: 0, ghost: 0, ghostOff: 0, ghostVel: 0, edge: 0, edgeTarget: 0, edgeCol: [1, 0.8, 0.2], flare: 0.5, flareCol: [1, 1, 1],
 
   // Mirror-dimension kaleidoscope; strongest request wins each frame.
   wantKaleido(amount, seg = 6) { if (amount > this.kalTarget) { this.kalTarget = amount; this.kalSeg = seg; } },
   // Set target opacity/offset of clone i (0..3); it eases in and out.
-  clone(i, dx, dy, a) { const c = this.clones[i]; c.dx = dx; c.dy = dy; c.ta = a; },
+  clone(i, dx, dy, a, s = 1) { const c = this.clones[i]; c.dx = dx; c.dy = dy; c.ta = a; c.s = s; },
   resetExtras() {
     this.clones.forEach((c) => { c.a = c.ta = 0; });
     this.kal = this.kalTarget = 0;
@@ -439,6 +451,7 @@ export class Pipeline {
       uEdgeCol: { value: new THREE.Color(1, 0.8, 0.2) },
       uCl: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
       uClCol: { value: new THREE.Color(0.3, 1, 0.75) },
+      uClA: { value: 0 },
       uHasMask: { value: 0 },
       uKal: { value: 0 },
       uKalRot: { value: 0 },
@@ -578,9 +591,10 @@ export class Pipeline {
       const c = P.clones[i];
       c.a += (c.ta - c.a) * (1 - Math.exp(-dt * 9));
       if (c.a < 0.004 && c.ta === 0) c.a = 0;
-      u.uCl.value[i].set(c.dx, c.dy, c.a, 0);
+      u.uCl.value[i].set(c.dx, c.dy, c.a, c.s);
     }
     u.uClCol.value.setRGB(...P.clCol);
+    u.uClA.value = P.clAnchor || window.innerWidth / 2;
     u.uHasMask.value = P.maskReady ? 1 : 0;
     P.kal += (P.kalTarget - P.kal) * (1 - Math.exp(-dt * (P.kalTarget > P.kal ? 5 : 3)));
     P.kalTarget = 0;

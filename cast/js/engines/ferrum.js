@@ -42,6 +42,13 @@ export class Ferrum {
     this.hud = { on: false, k: 0, fist: 0, cool: 0 };
     this.suit = { on: false, t: 0, hold: 0, cool: 0, glow: new FXQuad(S, 'glow', { a: GOLD[0], b: GOLD[2], intensity: 0, param: [3, 0, 0, 0] }), ring: new FXQuad(S, 'ring', { a: GOLD[0], b: GOLD[2], intensity: 0 }), x: 0, y: 0 };
     this.thrust = { k: 0, called: 0, alt: 0 };
+    this.uni = {
+      c: 0, on: false, t: 0, x: 0, y: 0, dx: 0, dy: -1, boomT: 0, lost: 0, cool: 0,
+      q: new FXQuad(S, 'beam', { a: CH.a, b: CH.b, intensity: 0 }),
+      core: new FXQuad(S, 'beam', { a: [1, 1, 1], b: [1, 1, 1], intensity: 0 }),
+      glow: new FXQuad(S, 'glow', { a: CH.a, b: CH.b, intensity: 0, param: [3, 0, 0, 0] }),
+      ring: new FXQuad(S, 'ring', { a: CH.a, b: CH.b, intensity: 0 }),
+    };
     this.power = 0;
   }
 
@@ -65,6 +72,8 @@ export class Ferrum {
     this.hud.on = false; this.hud.k = 0;
     this.suit.on = false; this.suit.glow.intensity = 0; this.suit.ring.intensity = 0;
     this.thrust.k = 0;
+    const u = this.uni;
+    u.on = false; u.c = 0; u.q.intensity = 0; u.core.intensity = 0; u.glow.intensity = 0; u.ring.intensity = 0;
     this.recolor();
   }
 
@@ -97,7 +106,8 @@ export class Ferrum {
     const levels = [0.32, 0.32];
     const suitBusy = this.updateSuit(L, R, dt, time, levels);
     const flying = this.updateThrusters(L, R, dt, time, levels);
-    const busy = suitBusy || flying;
+    const beaming = this.updateUnibeam(L, R, dt, time, levels);
+    const busy = suitBusy || flying || beaming;
     this.power = 0;
     for (const [k, h] of [['L', L], ['R', R]]) {
       const lv = this.updateHand(this.slots[k], h, other(h, L, R), dt, time, busy);
@@ -279,6 +289,112 @@ export class Ferrum {
     }
     this.after(0.1, () => overlay.smoke(x, y, 7, 1.1, { spread: 1.3, tint: [70, 66, 64], dur: 1.2, lobes: 3 }));
     sfx.play('explode', 0.6);
+  }
+
+  // ---------- Unibeam ----------
+  // Both palms open side by side and held: the arc reactor in your chest
+  // charges and fires a huge beam. It points through your hands, so moving
+  // them sweeps it across the room.
+  updateUnibeam(L, R, dt, time, levels) {
+    const u = this.uni, { fx, sfx, overlay } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    u.cool -= dt;
+    let pose = false, mx = 0, my = 0, sc = 80;
+    if (L.present && R.present && L.isOpen && R.isOpen && !L.point && !R.point) {
+      sc = (L.scale + R.scale) / 2;
+      const d = Math.hypot(L.cx - R.cx, L.cy - R.cy) / sc;
+      const down = (h) => h.pts[9].y - h.pts[0].y > h.scale * 0.55;
+      mx = (L.cx + R.cx) / 2; my = (L.cy + R.cy) / 2;
+      pose = d > 1.3 && d < 7.5 && Math.abs(L.cy - R.cy) / sc < 1.8 && !down(L) && !down(R);
+    }
+    if (!u.on) {
+      const still = pose && L.speed < CONFIG.stillSpeed * 2.5 && R.speed < CONFIG.stillSpeed * 2.5;
+      u.c = still && u.cool <= 0 ? u.c + dt / 0.85 * this.ctx.voice.boost : Math.max(0, u.c - dt * 2);
+      if (u.c > 0.02) {
+        u.x = mx; u.y = clamp(my + sc * 2.6, H * 0.5, H * 0.95);
+        const c = Math.min(1, u.c);
+        u.glow.set(u.x, u.y, sc * (2 + c * 5)); u.glow.intensity = 0.3 + c * 1.1; u.glow.tick(time);
+        const r = sc * (3.4 - 2.4 * c), S2 = r / 0.4 + 12;
+        u.ring.set(u.x, u.y, S2); u.ring.param(r / (S2 / 2), 4 / (S2 / 2), 0.05, 0); u.ring.intensity = 1 + c; u.ring.tick(time);
+        sfx.loop('charge', c);
+        Post.wantZoom(c * 0.05, u.x, u.y);
+        Post.shake(dt * c);
+        if (Math.random() < dt * 120 * c) {
+          const a = rand(0, TAU), d = sc * rand(2, 4);
+          this.ctx.streaks.spawn({ x: u.x + Math.cos(a) * d, y: u.y + Math.sin(a) * d, vx: -Math.cos(a) * d * 6, vy: -Math.sin(a) * d * 6, drag: 0, life: 0.16, c: pick(this.pal), bright: 2, width: 2.5, stretch: 0.06, fade: 0.8 });
+        }
+        levels[0] = levels[1] = 0.2;
+        if (u.c >= 1) this.fireUnibeam();
+        return u.c > 0.15;
+      }
+      u.glow.intensity = 0; u.ring.intensity = 0; u.q.intensity = 0; u.core.intensity = 0;
+      return false;
+    }
+    // firing
+    u.t += dt;
+    const DUR = this.suit.on ? 3.2 : 2.4;
+    if (pose) {
+      u.lost = 0;
+      u.x = damp(u.x, mx, 6, dt); u.y = damp(u.y, clamp(my + sc * 2.6, H * 0.5, H * 0.95), 6, dt);
+      let ax = mx - u.x, ay = (my - sc * 0.5) - u.y;
+      const m = Math.hypot(ax, ay) || 1;
+      u.dx = damp(u.dx, ax / m, 8, dt); u.dy = damp(u.dy, ay / m, 8, dt);
+    } else u.lost += dt;
+    const n = Math.hypot(u.dx, u.dy) || 1;
+    const dx = u.dx / n, dy = u.dy / n;
+    const e = toEdge(u.x, u.y, dx, dy, 40);
+    const k = u.t < 0.12 ? u.t / 0.12 : u.t > DUR - 0.3 ? Math.max(0, (DUR - u.t) / 0.3) : 1;
+    const wBeam = base * (0.13 + 0.02 * Math.sin(time * 40)) * k * this.pow;
+    const ang = Math.atan2(dy, dx);
+    u.q.set(u.x + dx * e.len / 2, u.y + dy * e.len / 2, e.len, Math.max(wBeam, 1), ang);
+    u.q.param(1, 1, 0, 0); u.q.intensity = 2.4 * k; u.q.tick(time);
+    u.core.set(u.x + dx * e.len / 2, u.y + dy * e.len / 2, e.len, Math.max(wBeam * 0.35, 1), ang);
+    u.core.param(1, 1, 0, 0); u.core.intensity = 2 * k; u.core.tick(time);
+    u.glow.set(u.x, u.y, base * 0.5 * k); u.glow.intensity = 1.3 * k; u.glow.tick(time);
+    u.ring.intensity = 0;
+    Post.wantDim(0.5 * k);
+    Post.shake(dt * 2.2 * k);
+    Post.aberrate(3 * k);
+    overlay.speedLines(0.7 * k, u.x, u.y);
+    sfx.loop('roar', 0.9 * k);
+    sfx.loop('charge', 0.5 * k);
+    // hex pulses racing down the beam
+    if (Math.random() < dt * 30) {
+      const d = rand(0.1, 0.9) * e.len, px = u.x + dx * d, py = u.y + dy * d, hw = wBeam * 0.7;
+      this.ctx.lines.spawn(px - dy * hw, py + dx * hw, px + dy * hw, py - dx * hw, 4, this.pal[1], 2, 0.06);
+    }
+    // continuous destruction where it lands on screen
+    u.boomT -= dt;
+    const hx = clamp(e.x, 0, W), hy = clamp(e.y, 0, H);
+    if (u.boomT <= 0 && k > 0.5) {
+      u.boomT = 0.13;
+      this.boom(hx + rand(-40, 40), hy + rand(-40, 40), 1.1, true);
+      if (Math.random() < 0.4) overlay.smoke(hx, hy, 3, 1, { spread: 1.2, tint: [60, 64, 70], dur: 1.1, lobes: 3 });
+    }
+    for (let i = 0; i < 4; i++) this.spark(u.x + dx * rand(0, e.len), u.y + dy * rand(0, e.len), ang + rand(-0.4, 0.4), rand(600, 1600), { life: 0.2, drag: 0.5 });
+    levels[0] = levels[1] = 0.25;
+    if (u.t >= DUR || u.lost > 0.6) {
+      u.on = false; u.c = 0; u.cool = 1.2;
+      u.q.intensity = 0; u.core.intensity = 0; u.glow.intensity = 0;
+      Post.flashScreen(0.2, this.cB);
+      sfx.play('collapse');
+    }
+    return true;
+  }
+
+  fireUnibeam() {
+    const u = this.uni, { fx, sfx, overlay } = this.ctx;
+    const diag = Math.hypot(window.innerWidth, window.innerHeight);
+    u.on = true; u.t = 0; u.lost = 0; u.dx = 0; u.dy = -1; u.boomT = 0.1;
+    overlay.callout('胸部砲', 'Unibeam', { big: true, dur: 1.6 });
+    sfx.play('repulsor'); sfx.play('nova');
+    Post.impact(0.1, this.cB);
+    Post.freeze(0.08);
+    Post.flashScreen(0.35, this.cB);
+    Post.punch(2, u.x, u.y);
+    Post.shockwave({ x: u.x, y: u.y, speed: 1600, width: 110, strength: 50, life: 0.8 });
+    fx.ring({ x: u.x, y: u.y, r0: 20, r1: diag * 0.7, dur: 0.7, width: 30, a: this.cA, b: this.cB, noise: 0.1, intensity: 2 });
+    this.ctx.onMove(5);
   }
 
   // ---------- Missile Volley ----------

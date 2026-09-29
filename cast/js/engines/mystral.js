@@ -32,6 +32,7 @@ export class Mystral {
         sigil: new Sigil(S, this.tex, CH.a, CH.b),
         halo: new FXQuad(S, 'glow', { a: CH.a, b: CH.b, intensity: 0, param: [3, 0, 0, 0] }),
         path: [], circCool: 0, sparkT: 0,
+        whip: { on: false, k: 0, pts: [], snapCool: 0, called: false, tipV: 0 },
       };
     }
     this.portal = {
@@ -61,6 +62,7 @@ export class Mystral {
   exit() {
     for (const st of Object.values(this.slots)) {
       st.k = 0; st.path.length = 0;
+      st.whip.on = false; st.whip.k = 0;
       st.sigil.target = 0; st.sigil.level = 0; st.sigil.update(0, 0, 0, 0, 1);
       st.halo.intensity = 0;
     }
@@ -128,7 +130,7 @@ export class Mystral {
     }
 
     // ---- Mandala Shield ----
-    const want = h.present && !busy && h.isOpen && h.still && !h.point && !h.two ? 1 : 0;
+    const want = h.present && !busy && h.isOpen && h.still && !h.point && !h.two && !h.pinch && !st.whip.on ? 1 : 0;
     st.k = damp(st.k, want, want ? 3.2 : 6, dt);
     if (st.k < 0.004) st.k = 0;
     const K = st.k;
@@ -180,7 +182,75 @@ export class Mystral {
 
     // ---- Crescent Slash ----
     this.updateSlash(st, h, dt, time);
+    // ---- Eldritch Whip ----
+    this.updateWhip(st, h, dt, time, busy);
     return 0.32 + K * 0.35;
+  }
+
+  // A rope of light hanging from your pinch. Verlet physics: it swings,
+  // wraps and trails behind your hand; snap your wrist to crack it.
+  updateWhip(st, h, dt, time, busy) {
+    const w = st.whip, { lines, sfx, fx, overlay } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight;
+    const N = 26, SEG = Math.min(W, H) * 0.56 / N;
+    const want = h.present && h.pinch && !busy;
+    w.snapCool -= dt;
+    if (want && !w.on) {
+      w.on = true; w.pts = [];
+      for (let i = 0; i < N; i++) w.pts.push({ x: h.pinchX, y: h.pinchY + i * SEG * 0.3, px: h.pinchX, py: h.pinchY + i * SEG * 0.3 });
+      sfx.play('chime');
+      if (!w.called) { w.called = true; overlay.callout('魔鞭', 'Eldritch Whip'); this.ctx.onMove(5); }
+      fx.ring({ x: h.pinchX, y: h.pinchY, r0: 6, r1: h.scale * 1.6, dur: 0.3, width: 6, a: CH.a, b: CH.b, intensity: 1.6 });
+    }
+    w.k = damp(w.k, want ? 1 : 0, want ? 8 : 5, dt);
+    if (!w.on) return;
+    if (!want && w.k < 0.03) { w.on = false; return; }
+    const P = w.pts;
+    const sdt = Math.min(dt, 1 / 30);
+    // integrate
+    for (let i = 1; i < N; i++) {
+      const p = P[i];
+      const vx = (p.x - p.px) * 0.985, vy = (p.y - p.py) * 0.985;
+      p.px = p.x; p.py = p.y;
+      p.x += vx; p.y += vy + 1400 * sdt * sdt;
+    }
+    if (want) { P[0].px = P[0].x; P[0].py = P[0].y; P[0].x = h.pinchX; P[0].y = h.pinchY; }
+    for (let it = 0; it < 8; it++) {
+      for (let i = 1; i < N; i++) {
+        const a = P[i - 1], b = P[i];
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1e-4;
+        const diff = (d - SEG) / d;
+        if (i === 1 && want) { b.x -= dx * diff; b.y -= dy * diff; }
+        else { a.x += dx * diff * 0.5; a.y += dy * diff * 0.5; b.x -= dx * diff * 0.5; b.y -= dy * diff * 0.5; }
+      }
+    }
+    // crack: the tip breaking past a speed you can only reach with a snap
+    const tip = P[N - 1];
+    const tv = Math.hypot(tip.x - tip.px, tip.y - tip.py) / Math.max(sdt, 1e-3);
+    w.tipV = tv;
+    if (want && tv > Math.min(W, H) * 2.8 && w.snapCool <= 0) {
+      w.snapCool = 0.3;
+      const a = Math.atan2(tip.y - tip.py, tip.x - tip.px);
+      sfx.play('whip'); sfx.play('crack');
+      Post.shake(0.4); Post.aberrate(8); Post.freeze(0.04);
+      Post.shockwave({ x: tip.x, y: tip.y, speed: 1300, width: 60, strength: 26, life: 0.5 });
+      fx.glow({ x: tip.x, y: tip.y, s0: 20, s1: 260, dur: 0.25, a: CH.a, b: [1, 1, 1], intensity: 2.2 });
+      fx.ring({ x: tip.x, y: tip.y, r0: 6, r1: 200, dur: 0.35, width: 10, a: CH.a, b: CH.b, intensity: 1.8 });
+      for (let i = 0; i < 40; i++) this.spark(tip.x, tip.y, a + rand(-0.9, 0.9), rand(400, 1600), { life: rand(0.2, 0.45) });
+      overlay.sfxText('SNAP!', tip.x, tip.y - 60, 0.6, [255, 120, 230]);
+    }
+    // draw: a hot core with a wider halo, thinning to the tip
+    for (let i = 1; i < N; i++) {
+      const a = P[i - 1], b = P[i], f = i / N;
+      lines.spawn(a.x, a.y, b.x, b.y, (26 - 16 * f) * w.k, MAG[1], 0.9 * w.k, 0.055);
+      lines.spawn(a.x, a.y, b.x, b.y, (8 - 5 * f) * w.k, [1, 0.92, 0.99], 1.8 * w.k, 0.055);
+    }
+    if (Math.random() < dt * 40 * w.k) {
+      const i = (Math.random() * N) | 0;
+      this.ctx.particles.spawn({ x: P[i].x, y: P[i].y, vx: rand(-40, 40), vy: rand(-60, 20), drag: 1.4, life: rand(0.4, 0.8), c: pick(MAG), bright: 1.2, size: rand(4, 8), size1: 1, fade: 1 });
+    }
+    if (tv > Math.min(W, H) * 2) this.spark(tip.x, tip.y, rand(0, TAU), rand(100, 400), { life: 0.2, width: 1.5 });
+    sfx.loop('hum', 0.35 * w.k);
   }
 
   drawPath(st, h) {

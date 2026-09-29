@@ -22,7 +22,7 @@ export class Overlay {
     this.signData = null; this.signShow = 0; this.signPop = []; this.signN = 0;
     this.hudData = null; this.hudShow = 0; this.hudT = 0;
     this.hasLetterSpacing = 'letterSpacing' in this.g;
-    this.puffs = []; this.knives = []; this.inkData = null; this.slashes = []; this.clockData = null; this.blasts = []; this.missileData = null; this.plates = [];
+    this.puffs = []; this.knives = []; this.inkData = null; this.slashes = []; this.clockData = null; this.blasts = []; this.missileData = null; this.plates = []; this.shuData = null;
   }
 
   resize(pr) {
@@ -134,6 +134,9 @@ export class Overlay {
     return k;
   }
 
+  // Giant windmill shuriken, set every frame: {x, y, r, rot, a, vx, vy}
+  setShuriken(d) { this.shuData = d; }
+
   // Homing missiles, set every frame: [{x, y, a}]
   setMissiles(list) { this.missileData = list; }
 
@@ -169,7 +172,7 @@ export class Overlay {
     this.cracks.length = 0;
     this.signData = null; this.hudData = null; this.signN = 0;
     this.puffs.length = 0; this.knives.length = 0; this.slashes.length = 0; this.blasts.length = 0;
-    this.inkData = null; this.clockData = null; this.missileData = null; this.plates.length = 0;
+    this.inkData = null; this.clockData = null; this.missileData = null; this.plates.length = 0; this.shuData = null;
     this.speed = this.speedTarget = 0;
     this.bars = this.barsTarget = 0;
   }
@@ -192,6 +195,8 @@ export class Overlay {
     this.clockData = null;
     this.drawKnives(dt);
     this.drawPlates(dt);
+    if (this.shuData) this.drawShuriken(this.shuData);
+    this.shuData = null;
     if (this.missileData) this.drawMissiles(this.missileData);
     this.missileData = null;
     this.drawSlashes(dt);
@@ -629,6 +634,55 @@ export class Overlay {
       g.fillStyle = '#5b666d';
       g.beginPath(); g.moveTo(-14, -4.5); g.lineTo(-18, -10); g.lineTo(-8, -4.5); g.closePath(); g.fill();
       g.beginPath(); g.moveTo(-14, 4.5); g.lineTo(-18, 10); g.lineTo(-8, 4.5); g.closePath(); g.fill();
+      g.restore();
+    }
+  }
+
+  drawShuriken(d) {
+    const g = this.g;
+    const blade = (x, y, r, rot, alpha, glow) => {
+      g.save();
+      g.globalAlpha = alpha;
+      g.translate(x, y); g.rotate(rot);
+      if (glow) { g.shadowColor = 'rgba(60,255,170,0.9)'; g.shadowBlur = 22; }
+      for (let i = 0; i < 4; i++) {
+        g.save(); g.rotate(i * Math.PI / 2);
+        const gr = g.createLinearGradient(0, -r * 0.2, r, r * 0.2);
+        gr.addColorStop(0, '#f2fbf7'); gr.addColorStop(0.35, '#9aa9a6'); gr.addColorStop(0.7, '#48524f'); gr.addColorStop(1, '#1b2120');
+        g.fillStyle = gr;
+        g.beginPath();
+        g.moveTo(r * 0.12, -r * 0.16);
+        g.quadraticCurveTo(r * 0.55, -r * 0.3, r, -r * 0.02);
+        g.quadraticCurveTo(r * 0.55, r * 0.02, r * 0.2, r * 0.2);
+        g.closePath(); g.fill();
+        g.shadowBlur = 0;
+        g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 1.2;
+        g.beginPath(); g.moveTo(r * 0.18, -r * 0.1); g.quadraticCurveTo(r * 0.55, -r * 0.24, r * 0.97, -r * 0.03); g.stroke();
+        g.restore();
+      }
+      g.shadowBlur = 0;
+      g.fillStyle = '#2a3230';
+      g.beginPath(); g.arc(0, 0, r * 0.24, 0, TAU); g.fill();
+      g.strokeStyle = '#8fe8c4'; g.lineWidth = r * 0.05;
+      g.beginPath(); g.arc(0, 0, r * 0.18, 0, TAU); g.stroke();
+      g.fillStyle = '#050707';
+      g.beginPath(); g.arc(0, 0, r * 0.1, 0, TAU); g.fill();
+      g.restore();
+    };
+    const sp = Math.hypot(d.vx || 0, d.vy || 0);
+    if (sp > 200) {
+      // motion ghosts behind a flying shuriken
+      for (let k = 3; k >= 1; k--) {
+        const f = k * 0.018;
+        blade(d.x - d.vx * f, d.y - d.vy * f, d.r, d.rot - k * 0.5, d.a * 0.18 * (4 - k) / 3, false);
+      }
+    }
+    blade(d.x, d.y, d.r, d.rot, d.a, true);
+    if (d.spin > 10) {
+      // spin blur disc
+      g.save(); g.globalAlpha = d.a * Math.min(0.35, d.spin / 80);
+      g.strokeStyle = 'rgba(210,255,235,0.8)'; g.lineWidth = d.r * 0.08;
+      g.beginPath(); g.arc(d.x, d.y, d.r * 0.92, 0, TAU); g.stroke();
       g.restore();
     }
   }
