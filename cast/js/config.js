@@ -103,6 +103,9 @@ export const CHARACTERS = {
       { id: 'rail', kanji: '電磁砲', name: 'Railgun', how: 'Point a finger and hold still. It fires when fully charged.' },
       { id: 'link', kanji: '雷鎖', name: 'Arc Link', how: 'Hold both hands open and apart. Clap them together to overload.' },
       { id: 'strike', kanji: '落雷', name: 'Thunderstrike', how: 'Raise a fist and slam it straight down.' },
+      { id: 'bolt', kanji: '神雷', name: 'Shazam Bolt', how: 'Point a finger at the sky and hold. Lightning hits you, then every point fires a bolt for 8 seconds.' },
+      { id: 'storm', kanji: '天雷', name: 'Sky Storm', how: 'Hold Arc Link, then throw both hands up. The whole sky answers along the chain.' },
+      { id: 'conduit', kanji: '雷導', name: 'Conduit', how: 'Call the bolt, then hold Arc Link. Every finger throws lightning. Clap for a storm overload.' },
     ],
   },
   kai: {
@@ -175,11 +178,11 @@ export const CHARACTERS = {
       { id: 'missile', kanji: '追尾弾', name: 'Missile Volley', how: 'Two fingers up, then flick.' },
       { id: 'thrusters', kanji: '飛行', name: 'Thrusters', how: 'Both palms open, fingers pointing down.' },
       { id: 'suit', kanji: '装着', name: 'Suit-Up', how: 'Bring both fists together and hold. Powers up every move.' },
-      { id: 'holo', kanji: '設計図', name: 'Holo Schematic', how: 'Pinch with both hands and pull apart. The reactor comes apart layer by layer. Tilt your hands to spin it.' },
+      { id: 'holo', kanji: '設計図神導', name: 'Holo Schematic', how: 'Pinch with both hands and pull apart. The reactor comes apart layer by layer. Tilt your hands to spin it.' },
       { id: 'unibeam', kanji: '胸部砲', name: 'Unibeam', how: 'Both palms open side by side, held still. Move your hands to steer the beam.' },
     ],
   },
 };
 
 // Characters for the Google Fonts subset request (only these glyphs download).
-export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着十風手裏剣胸部砲変わり設計図'))).join('');
+export const KANJI_SET = Array.from(new Set(Array.from('炎虚雷火球鞭爆壁龍引力斥特異点空門間斬掌電磁砲鎖落連撃気功波天元玉弾射覚醒瞬歩過負荷再生叫影分身煙遁苦無縛蝕子寅午辰合魔護法陣転移鏡像界月光時廻鋼線戦術追尾飛行装着十風手裏剣胸部砲変わり設計図神導'))).join('');

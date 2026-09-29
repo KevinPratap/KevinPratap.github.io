@@ -30,13 +30,14 @@ export class Raiju {
     for (const s of ['L', 'R']) {
       this.slots[s] = {
         charge: 0, ready: false, ox: 0, oy: 0, size: 80, boltT: 0,
-        rail: 0, railCool: 0, railBoltT: 0, strikeCool: 0, calloutCool: 0,
+        call: 0, callCool: 0, rail: 0, railCool: 0, railBoltT: 0, strikeCool: 0, calloutCool: 0,
         ball: new FXQuad(S, 'plasma', { a: CH.a, b: CH.b, intensity: 0 }),
         tipBall: new FXQuad(S, 'plasma', { a: CH.a, b: HOT, intensity: 0 }),
         sigil: new Sigil(S, tex, CH.a, CH.b),
       };
     }
     this.link = { level: 0, on: false, t: 0, boltT: 0, prevD: 0, cool: 0, mx: 0, my: 0, calloutCool: 0 };
+    this.charged = 0; this.fireT = 0; this.stormT = 0; this.stormCool = 0; this.conduitCool = 0; this.shots = 0;
     this.projectiles = [];
     this.beams = [];
     this.timers = [];
@@ -52,6 +53,7 @@ export class Raiju {
       st.sigil.target = 0; st.sigil.level = 0; st.sigil.update(0, 0, 0, 0, 1);
     }
     this.link.level = 0; this.link.on = false;
+    this.charged = 0; this.stormT = 0;
     this.projectiles.forEach((p) => { p.ball.dispose(); p.trail.dispose(); });
     this.projectiles.length = 0;
     this.beams.forEach((b) => b.q.dispose());
@@ -80,6 +82,18 @@ export class Raiju {
       if (t.t <= 0) { this.timers.splice(i, 1); t.fn(); }
     }
     const levels = [0.3, 0.3];
+    this.fireT -= dt; this.stormCool -= dt; this.conduitCool -= dt;
+    if (this.charged > 0) {
+      this.charged -= dt;
+      Post.wantAura(0.3 + Math.min(1, this.charged) * 0.15, CH.a, CH.b);
+      Post.wantEdge(0.35, CH.b);
+      levels[0] = levels[1] = 0.9;
+      if (this.charged <= 0) {
+        this.ctx.overlay.callout('放電', 'Charge spent');
+        this.ctx.sfx.play('zap', 0.8);
+      }
+    }
+    if (this.stormT > 0) { this.stormT -= dt; Post.wantDim(Math.min(0.65, this.stormT * 0.8)); }
     const linked = this.updateLink(hands, dt, time, levels);
     levels[0] = Math.max(levels[0], this.updateHand(this.slots.L, hands.L, dt, time, linked));
     levels[1] = Math.max(levels[1], this.updateHand(this.slots.R, hands.R, dt, time, linked));
@@ -91,11 +105,11 @@ export class Raiju {
     }
     // stray static crawling over the hands
     for (const h of [hands.L, hands.R]) {
-      if (h.present && Math.random() < dt * 5) {
+      if (h.present && Math.random() < dt * (this.charged > 0 ? 22 : 5)) {
         const p = h.pts[pick([4, 8, 12, 16, 20])];
         this.spark(p.x, p.y, rand(0, TAU), rand(150, 450), { life: 0.15 });
       }
-      if (h.present && Math.random() < dt * 6) {
+      if (h.present && Math.random() < dt * (this.charged > 0 ? 24 : 6)) {
         const a = h.pts[(Math.random() * 21) | 0], b = h.pts[(Math.random() * 21) | 0];
         this.bolt(a.x, a.y, b.x, b.y, { width: 1.6, depth: 3, branch: 0, bright: 1.6, life: 0.06 });
       }
@@ -106,7 +120,7 @@ export class Raiju {
   // ---------- Thunder Palm + Railgun + Thunderstrike ----------
   updateHand(st, h, dt, time, busy) {
     const { sfx, overlay, fx } = this.ctx;
-    st.railCool -= dt; st.strikeCool -= dt; st.calloutCool -= dt;
+    st.railCool -= dt; st.strikeCool -= dt; st.calloutCool -= dt; st.callCool -= dt;
     let level = 0.3;
 
     if (!h.present) {
@@ -145,8 +159,30 @@ export class Raiju {
         if (st.charge < 0.99) st.ready = false;
       }
 
+      // Shazam Bolt: point straight up to call lightning down; while charged,
+      // every point fires a bolt from the fingertip.
+      const up = h.point && h.pdy < -0.62;
+      if (up && this.charged <= 0 && st.callCool <= 0 && !busy) {
+        st.call += dt;
+        st.callT = (st.callT || 0) - dt;
+        if (st.callT <= 0) {
+          st.callT = 0.05;
+          const k = st.call / 0.45;
+          this.bolt(h.tipX + rand(-40, 40) * (1 - k), -30, h.tipX, h.tipY, { width: 1.4 + k * 3, jag: 0.12, depth: 5, branch: 0.2, life: 0.05, bright: 1 + k });
+        }
+        Post.wantDim(st.call * 0.7);
+        Post.wantZoom(st.call * 0.07, h.tipX, h.tipY);
+        if (st.call > 0.45) { this.skyCall(h, st); st.call = 0; st.callCool = 1.2; }
+      } else {
+        st.call = 0;
+      }
+      if (this.charged > 0 && h.point && this.fireT <= 0) {
+        this.fireT = 0.15;
+        this.shootBolt(h);
+      }
+
       // Railgun: point, hold still, auto-fire at full charge.
-      if (h.point && st.railCool <= 0 && h.speed < CONFIG.stillSpeed * 1.3) {
+      if (h.point && !up && this.charged <= 0 && st.railCool <= 0 && h.speed < CONFIG.stillSpeed * 1.3) {
         st.rail = Math.min(1, st.rail + (dt * this.ctx.voice.boost) / CONFIG.railCharge);
         if (st.rail >= 1) {
           this.fireRail(h);
@@ -386,6 +422,8 @@ export class Raiju {
     const sx = x + rand(-0.15, 0.15) * W;
     const fire = (w) => this.bolt(sx, -30, x, y, { width: w, jag: 0.14, depth: 7, branch: 1, life: 0.09, bright: 3 });
     fire(16);
+    this.ctx.phys.blast(x, y, base * 0.6, 2600);
+    this.ctx.phys.burst(x, y, 16, 'rock', { speed: 1100, size: 13, up: 600, kinds: ['rock', 'glass'], cone: 2.6 });
     Post.impact(0.1, [1, 1, 0.92]);
     Post.flashScreen(0.7, [1, 0.98, 0.85]);
     Post.freeze(0.09);
@@ -415,6 +453,116 @@ export class Raiju {
     this.ctx.onMove(3);
   }
 
+  // ---------- Shazam Bolt ----------
+  skyCall(h, st) {
+    const { fx, sfx, overlay, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    const x = h.tipX, y = h.tipY;
+    const fire = (w) => this.bolt(x + rand(-30, 30), -30, x, y, { width: w, jag: 0.14, depth: 7, branch: 1, life: 0.1, bright: 3.4 });
+    fire(22); fire(12);
+    Post.impact(0.14, [1, 1, 0.95]);
+    Post.flashScreen(1, [1, 1, 0.92]);
+    Post.freeze(0.12);
+    Post.shake(1);
+    Post.punch(2.4, x, y);
+    Post.aberrate(18);
+    Post.bloom(3);
+    Post.glitchFor(0.35);
+    Post.shockwave({ x, y, speed: 1600, width: 90, strength: 46, life: 0.8 });
+    fx.glow({ x, y, s0: base * 0.2, s1: base * 1.4, dur: 0.5, a: CH.a, b: HOT, intensity: 3 });
+    fx.ring({ x, y, r0: 10, r1: base * 0.8, dur: 0.6, width: 26, a: CH.a, b: HOT, noise: 0.2, intensity: 2.4 });
+    [0.05, 0.11, 0.19, 0.3].forEach((t, i) => this.after(t, () => { fire(16 - i * 3); Post.flashScreen(0.4 - i * 0.08, HOT); }));
+    // a crown of arcs leaps off the hand
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * TAU + rand(-0.2, 0.2), L = base * rand(0.2, 0.5);
+      this.bolt(x, y, x + Math.cos(a) * L, y + Math.sin(a) * L, { width: 5, life: 0.16, branch: 0.7 });
+    }
+    for (let i = 0; i < 140; i++) this.spark(x, y, rand(0, TAU), rand(500, 2200), { life: rand(0.3, 0.7), grav: 900 });
+    phys.blast(x, y, base * 0.7, 2600);
+    phys.burst(x, Math.min(H - 10, y + base * 0.4), 18, 'rock', { speed: 900, size: 13, up: 500, kinds: ['rock', 'glass'], dir: -Math.PI / 2, cone: 2.4 });
+    this.charged = 8;
+    this.lines = { t: 0.6, x, y };
+    overlay.callout('神雷', 'Shazam Bolt', { big: true });
+    overlay.crack(x, y, 1.5);
+    sfx.play('thunder', 1.8);
+    this.ctx.onMove(4);
+  }
+
+  shootBolt(h) {
+    const { fx, sfx, overlay, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    const x = h.tipX + h.pdx * h.scale * 0.2, y = h.tipY + h.pdy * h.scale * 0.2;
+    const a0 = Math.atan2(h.pdy, h.pdx) + rand(-0.03, 0.03);
+    const dx = Math.cos(a0), dy = Math.sin(a0);
+    const e = toEdge(x, y, dx, dy, 30);
+    const ex = clamp(e.x, 0, W), ey = clamp(e.y, 0, H);
+    this.bolt(x, y, e.x, e.y, { width: 9, jag: 0.1, depth: 8, branch: 0.9, life: 0.09, bright: 3.4 });
+    this.bolt(x, y, e.x, e.y, { width: 4, jag: 0.2, depth: 7, branch: 0.5, life: 0.07, bright: 2.6 });
+    // chain forks off the main channel
+    for (let i = 0; i < 3; i++) {
+      const t = rand(0.25, 0.9) * e.len, fa = a0 + rand(-0.9, 0.9);
+      const fx0 = x + dx * t, fy0 = y + dy * t, L = base * rand(0.1, 0.28);
+      this.bolt(fx0, fy0, fx0 + Math.cos(fa) * L, fy0 + Math.sin(fa) * L, { width: 3, life: 0.08, branch: 0.4 });
+    }
+    fx.glow({ x, y, s0: h.scale * 0.6, s1: h.scale * 2.6, dur: 0.16, a: CH.a, b: HOT, intensity: 2.6 });
+    fx.ring({ x, y, r0: h.scale * 0.3, r1: h.scale * 1.8, dur: 0.22, width: 8, a: CH.a, b: HOT, intensity: 2 });
+    for (let i = 0; i < 14; i++) this.spark(x, y, a0 + rand(-0.35, 0.35), rand(1000, 2600), { life: rand(0.12, 0.28), grav: 0 });
+    phys.push(x, y, dx, dy, e.len, h.scale * 1.4, 2200);
+    phys.blast(ex, ey, base * 0.32, 1500);
+    phys.burst(ex, ey, 6, 'rock', { speed: 800, size: 11, up: 400, kinds: ['rock', 'glass'], dir: a0 + Math.PI, cone: 2.2 });
+    fx.glow({ x: ex, y: ey, s0: base * 0.05, s1: base * 0.3, dur: 0.2, a: CH.a, b: HOT, intensity: 2.2 });
+    for (let i = 0; i < 12; i++) this.spark(ex, ey, rand(0, TAU), rand(400, 1400), { life: rand(0.15, 0.4) });
+    Post.shake(0.4);
+    Post.flashScreen(0.14, HOT);
+    Post.aberrate(6);
+    Post.bloom(1);
+    Post.punch(-0.8, x, y);
+    if (++this.shots % 3 === 1) overlay.sfxText(['ZAKK!', 'BZZT!', 'KRA-KOOM!'][((this.shots / 3) | 0) % 3], ex, ey, 1.1, [255, 236, 120]);
+    if (this.shots % 2 === 0) sfx.play('zap', 1.4);
+  }
+
+  // Arc Link raised skyward: the storm answers along the whole chain.
+  stormCall(L, R, sc) {
+    const { fx, sfx, overlay, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    this.stormCool = 3;
+    this.stormT = 1.6;
+    Post.flashScreen(0.6, HOT);
+    Post.shake(1);
+    Post.aberrate(14);
+    Post.glitchFor(0.3);
+    overlay.callout('天雷', 'Sky Storm', { big: true, dur: 1.5 });
+    sfx.play('thunder', 1.8);
+    this.ctx.onMove(5);
+    const n = 11;
+    for (let i = 0; i < n; i++) {
+      this.after(i * 0.1, () => {
+        const u = i < 2 ? i : Math.random();
+        const x = lerp(L.cx, R.cx, u) + (i > 1 ? rand(-0.12, 0.12) * W : 0);
+        const y = lerp(L.cy, R.cy, u) + base * rand(0.05, 0.4);
+        const yy = Math.min(H - 20, y);
+        const sx = x + rand(-0.1, 0.1) * W;
+        this.bolt(sx, -30, x, yy, { width: 14, jag: 0.14, depth: 7, branch: 1, life: 0.1, bright: 3.2 });
+        this.bolt(sx, -30, x, yy, { width: 6, jag: 0.2, depth: 6, branch: 0.6, life: 0.07, bright: 2.4 });
+        Post.flashScreen(0.35, HOT);
+        Post.shockwave({ x, y: yy, speed: 1300, width: 60, strength: 28, life: 0.5 });
+        Post.shake(0.6);
+        Post.bloom(1.6);
+        fx.glow({ x, y: yy, s0: base * 0.05, s1: base * 0.5, dur: 0.3, a: CH.a, b: HOT, intensity: 2.6 });
+        fx.ring({ x, y: yy, r0: 10, r1: base * 0.3, dur: 0.35, width: 14, a: CH.a, b: HOT, intensity: 2 });
+        for (let k = 0; k < 4; k++) {
+          const a = (k % 2 ? 0 : Math.PI) + rand(-0.4, 0.4), Ll = base * rand(0.1, 0.3);
+          this.bolt(x, yy, x + Math.cos(a) * Ll, yy + Math.sin(a) * Ll * 0.4, { width: 3, life: 0.14, branch: 0.5 });
+        }
+        for (let k = 0; k < 40; k++) this.spark(x, yy, -Math.PI / 2 + rand(-1.3, 1.3), rand(400, 1600), { grav: 1600, life: rand(0.3, 0.7) });
+        phys.blast(x, yy, base * 0.5, 2200);
+        phys.burst(x, yy, 8, 'rock', { speed: 1000, size: 12, up: 600, kinds: ['rock', 'glass'], cone: 2.4 });
+        if (i === 4 || i === 9) overlay.sfxText('DOOOM!', x, Math.max(H * 0.5, yy), 1.1, [255, 240, 150]);
+        sfx.play('thunder', 1.0);
+      });
+    }
+  }
+
   // ---------- Arc Link ----------
   updateLink(hands, dt, time, levels) {
     const k = this.link, L = hands.L, R = hands.R;
@@ -432,6 +580,9 @@ export class Raiju {
         k.cool = 1.6;
         k.level = 0;
       }
+      // Sky Storm: raise a live link fast.
+      const rise = -((L.vy + R.vy) / 2) / sc;
+      if (k.level > 0.5 && rise > CONFIG.slamSpeed * 0.85 && this.stormCool <= 0) this.stormCall(L, R, sc);
       k.prevD = d;
     } else {
       k.prevD = 0;
@@ -465,6 +616,35 @@ export class Raiju {
         this.bolt(a.x, a.y, lerp(a.x, b.x, rand(0.2, 0.6)), lerp(a.y, b.y, rand(0.2, 0.6)), { width: 1.8, depth: 4, branch: 0, life: 0.05 });
         this.bolt(b.x, b.y, lerp(b.x, a.x, rand(0.2, 0.6)), lerp(b.y, a.y, rand(0.2, 0.6)), { width: 1.8, depth: 4, branch: 0, life: 0.05 });
       }
+    }
+    // Conduit: a charged body feeds the link, so every finger throws lightning outward.
+    if (this.charged > 0 && lv > 0.3) {
+      if (this.conduitCool <= 0) {
+        overlay.callout('雷導', 'Conduit');
+        this.ctx.onMove(6);
+        this.conduitCool = 4;
+        Post.flashScreen(0.4, HOT);
+        sfx.play('zap', 1.8);
+      }
+      this.conduitCool = Math.max(this.conduitCool, 0.5);
+      const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+      const mx = (L.cx + R.cx) / 2, my = (L.cy + R.cy) / 2;
+      if (k.boltT > 0.03) {
+        for (const h of [L, R]) {
+          for (const ti of [4, 8, 12, 16, 20]) {
+            if (Math.random() > 0.55) continue;
+            const p = h.pts[ti];
+            let ax = p.x - mx, ay = p.y - my - base * 0.25;
+            const m = Math.hypot(ax, ay) || 1;
+            const a = Math.atan2(ay / m, ax / m) + rand(-0.5, 0.5), Ll = base * rand(0.25, 0.75);
+            this.bolt(p.x, p.y, p.x + Math.cos(a) * Ll, p.y + Math.sin(a) * Ll, { width: 3.2, depth: 6, branch: 0.6, life: 0.07, bright: 2.4 });
+          }
+        }
+        this.ctx.phys.blast(mx, my, base * 0.6, 260);
+        Post.aberrate(4);
+      }
+      Post.wantAura(0.9, CH.a, CH.b);
+      Post.shake(dt * 0.6);
     }
     if (Math.random() < lv) {
       const t = Math.random();
@@ -507,6 +687,20 @@ export class Raiju {
       }
     });
     for (let i = 0; i < 200; i++) this.spark(x, y, rand(0, TAU), rand(600, 2400), { life: rand(0.25, 0.6) });
+    const { phys } = this.ctx;
+    phys.blast(x, y, diag * 0.6, this.charged > 0 ? 4200 : 2600);
+    phys.burst(x, y, 22, 'rock', { speed: 1300, size: 13, up: 500, kinds: ['rock', 'glass'] });
+    if (this.charged > 0) {
+      // a charged body turns the overload into a full storm
+      for (let i = 0; i < 8; i++) this.after(0.05 + i * 0.06, () => {
+        const sx = rand(0.1, 0.9) * W, sy = rand(0.45, 0.9) * H;
+        this.bolt(sx + rand(-80, 80), -30, sx, sy, { width: 12, jag: 0.14, depth: 7, branch: 1, life: 0.1, bright: 3 });
+        Post.flashScreen(0.3, HOT); Post.shake(0.6);
+        phys.blast(sx, sy, 300, 1800);
+      });
+      Post.glitchFor(0.9);
+      this.charged = 0;
+    }
     this.lines = { t: 0.55, x, y };
     overlay.callout('過負荷', 'Overload', { big: true });
     overlay.crack(x, y, 1.5);
