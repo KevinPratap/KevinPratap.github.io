@@ -49,6 +49,14 @@ function extensions(p, out, is3d) {
   return (out[0] + out[1] + out[2] + out[3]) / 4;
 }
 
+// Thumb extension: tip far from the index knuckle = thumb out (thumbs-up,
+// L-shape); tip tucked over the fingers = thumb in (a real fist).
+function thumbOut(p, is3d) {
+  const d = (a, b) => Math.hypot(p[a].x - p[b].x, p[a].y - p[b].y, is3d ? p[a].z - p[b].z : 0);
+  const ref = d(0, 5) || 1e-4;
+  return clamp((d(4, 5) / ref - 0.42) / 0.5, 0, 1);
+}
+
 const pt = () => ({ x: 0, y: 0 });
 
 // One Euro filter: heavy smoothing when a point is slow (kills camera
@@ -97,6 +105,14 @@ export class HandState {
     this.point = false; this.pointTime = 0; this.two = false; this.twoTime = 0;
     this.tipX = 0; this.tipY = 0; this.pdx = 0; this.pdy = -1;
     this.pinch = false; this.pinchX = 0; this.pinchY = 0;
+    this.thumb = 0.5; this.thumbT = 0.5;
+    // index/middle tip gap and crossing, for V vs crossed-finger signs
+    this.gap = 1; this.crossed = false;
+    // hand's own axes on screen: up = wrist to middle knuckle, hilt = pinky
+    // knuckle to index knuckle (the line a fist grips a handle along)
+    this.ux = 0; this.uy = -1; this.hx = 0; this.hy = -1;
+    this.mdx = 0; this.mdy = -1;
+    this.label = '';
     this.fist = false; this.isOpen = false; this.cupped = false; this.still = false;
     this.stillTime = 0; this.lostTime = 0;
     this.flick = false; this.thrust = false;
@@ -122,6 +138,7 @@ export class HandState {
       else { this.target[i].x = fx.filter(this.target[i].x, dtDet); this.target[i].y = fy.filter(this.target[i].y, dtDet); }
     }
     this.openTarget = wl ? extensions(wl, this.extT, true) : extensions(this.target, this.extT, false);
+    this.thumbT = wl ? thumbOut(wl, true) : thumbOut(this.target, false);
 
     // Motion is measured once per detection on filtered points, not per
     // render frame, so speed is steady and "still" really means still.
@@ -132,6 +149,7 @@ export class HandState {
     if (fresh) {
       for (let i = 0; i < 21; i++) { this.pts[i].x = T[i].x; this.pts[i].y = T[i].y; }
       this.open = this.openTarget;
+      this.thumb = this.thumbT;
       for (let i = 0; i < 4; i++) this.ext[i] = this.extT[i];
       this.vx = 0; this.vy = 0; this.scaleRate = 0;
       this.scale = sc; this.cx = cx; this.cy = cy;
@@ -158,6 +176,7 @@ export class HandState {
       this.present = false;
       this.speed = 0; this.vx = 0; this.vy = 0; this.scaleRate = 0;
       this.fist = this.isOpen = this.cupped = this.still = this.point = this.two = this.pinch = false;
+      this.crossed = false;
       this.stillTime = 0; this.pointTime = 0; this.twoTime = 0;
     }
   }
@@ -190,6 +209,22 @@ export class HandState {
     this.open += (this.openTarget - this.open) * ko;
     const E = this.ext;
     for (let i = 0; i < 4; i++) E[i] += (this.extT[i] - E[i]) * ko;
+    this.thumb += (this.thumbT - this.thumb) * ko;
+    {
+      const nrm = (x, y) => { const m = Math.hypot(x, y) || 1; return [x / m, y / m]; };
+      const [ux, uy] = nrm(p[9].x - p[0].x, p[9].y - p[0].y);
+      const [hx, hy] = nrm(p[5].x - p[17].x, p[5].y - p[17].y);
+      const [mx, my] = nrm(p[12].x - p[9].x, p[12].y - p[9].y);
+      const kd = 1 - Math.exp(-20 * dt);
+      this.ux += (ux - this.ux) * kd; this.uy += (uy - this.uy) * kd;
+      this.hx += (hx - this.hx) * kd; this.hy += (hy - this.hy) * kd;
+      this.mdx += (mx - this.mdx) * kd; this.mdy += (my - this.mdy) * kd;
+      // tips swapped sides relative to the knuckles = fingers crossed
+      const ax = p[5].x - p[9].x, ay = p[5].y - p[9].y;
+      const across = (p[8].x - p[12].x) * ax + (p[8].y - p[12].y) * ay;
+      this.crossed = across < 0;
+      this.gap = Math.hypot(p[8].x - p[12].x, p[8].y - p[12].y) / this.scale;
+    }
 
     // Pointing: index straight, the other three curled.
     const others = Math.max(E[1], E[2], E[3]);
@@ -328,7 +363,7 @@ export class Tracker {
     }
 
     for (const s of ['L', 'R']) {
-      if (assigned[s]) this.hands[s].ingest(assigned[s].lm, assigned[s].wl, dt);
+      if (assigned[s]) { this.hands[s].ingest(assigned[s].lm, assigned[s].wl, dt); this.hands[s].label = assigned[s].label; }
       else this.hands[s].miss(dt);
     }
   }
