@@ -1,13 +1,24 @@
-// Nyx: a live attraction/repulsion field acting on a swarm of void motes,
-// plus a real screen-space black hole that bends the camera image.
-import { CONFIG, CHARACTERS } from '../config.js';
+// Nyx: Limitless. Space itself, bent around your fingertips.
+//  - Blue (蒼): point and hold. A point of infinite attraction forms at your
+//    fingertip and drags the room into it. Flick to launch it.
+//  - Red (赫): pinch thumb and index and hold to charge, then snap the
+//    fingers open. A repulsion shot that blows everything apart.
+//  - Hollow Purple (虚式「茈」): Blue in one hand, Red in the other; bring
+//    them together. They fuse into imaginary mass. Thrust or fling to fire:
+//    it erases a trench straight through the world.
+//  - Domain Expansion, Infinite Void: cross your index and middle fingers
+//    and hold them up. Everything behind you becomes an endless void.
+import { CHARACTERS } from '../config.js';
 import { Post } from '../render/pipeline.js';
-import { FXQuad, Sigil, Trail, makeSigilTextures } from '../render/objects.js';
-import { clamp, rand, pick, TAU, damp, lerp } from '../util.js';
+import { FXQuad } from '../render/objects.js';
+import { pose, Hold } from '../signs.js';
+import { clamp, rand, pick, TAU, damp, lerp, easeOutCubic } from '../util.js';
 
 const CH = CHARACTERS.nyx;
-const VOID = [[0.55, 0.35, 1], [0.7, 0.5, 1], [0.9, 0.8, 1], [0.42, 0.26, 0.95]];
-const MOTES = 200;
+const BLUE = [0.12, 0.38, 1.0], BLUE_B = [0.5, 0.75, 1.0];
+const RED = [1.0, 0.12, 0.08], RED_B = [1.0, 0.8, 0.72];
+const PURP = [0.6, 0.12, 1.0], PURP_B = [0.82, 0.55, 1.0];
+const MOVE = { blue: 0, red: 1, purple: 2, domain: 3 };
 
 function release(src) {
   const i = Post.persistent.indexOf(src);
@@ -19,504 +30,383 @@ export class Nyx {
     this.ctx = ctx;
     this.ch = CH;
     const S = ctx.scene;
-    const tex = makeSigilTextures('nyx', 23);
-    this.slots = {};
-    for (const s of ['L', 'R']) {
-      this.slots[s] = {
-        pull: 0, calloutCool: 0, pushCool: 0, x: 0, y: 0, size: 80,
-        sigil: new Sigil(S, tex, CH.a, CH.b),
-        disk: new FXQuad(S, 'voidDisk', { a: CH.a, b: CH.b, intensity: 0, param: [0.28, 0.95, 3, 0] }),
-        lens: null, swirl: null,
-        slash: false, sx: 0, sy: 0, ex: 0, ey: 0, slashT: 0, riftCool: 0,
-        blade: new Trail(S, { width: 30, life: 0.22, fire: false, a: CH.a, b: [1, 1, 1] }),
-      };
-    }
-    this.sing = {
-      t: 0, on: false, portal: false, level: 0, pr: 0, x: 0, y: 0, sc: 80, lost: 0,
-      disk: new FXQuad(S, 'voidDisk', { a: [0.42, 0.18, 1.0], b: [0.9, 0.7, 1.0], intensity: 0, param: [0.3, 0.95, 3, 0] }),
-      inner: new FXQuad(S, 'voidDisk', { a: [0.3, 0.1, 0.6], b: [0.6, 0.4, 1], intensity: 0, param: [0.02, 0.9, 4, 0] }),
-      sigil: new Sigil(S, tex, CH.a, CH.b),
-      lens: null, swirl: null,
-    };
-    this.motes = [];
-    this.forces = [];
-    this.timers = [];
-    this.moteFn = (p, dt) => this.moveMote(p, dt);
+    const orb = (a, b) => new FXQuad(S, 'kiOrb', { a, b, intensity: 0 });
+    const glow = (a, b) => new FXQuad(S, 'glow', { a, b, intensity: 0, param: [3, 0, 0, 0] });
+    this.blue = { on: false, k: 0, x: 0, y: 0, slot: null, hold: new Hold(0.3), orb: orb(BLUE, BLUE_B), glow: glow(BLUE, BLUE_B), well: null, lens: null, swirl: null, fly: null, off: 0 };
+    this.red = { on: false, k: 0, x: 0, y: 0, slot: null, hold: new Hold(0.3), orb: orb(RED, RED_B), glow: glow(RED, RED_B), shot: null, off: 0 };
+    this.purp = { ph: 'none', t: 0, x: 0, y: 0, R: 0, vx: 0, vy: 0, orb: orb(PURP, PURP_B), glow: glow(PURP, PURP_B), lens: null, bx: 0, by: 0, rx: 0, ry: 0 };
+    this.dom = { ph: 'none', t: 0, hold: new Hold(0.55), x: 0, y: 0 };
+    this.trench = [];
+    this.painter = (g, dt) => this.paint(g, dt);
   }
 
   enter() {
-    for (const st of Object.values(this.slots)) { st.lens = Post.source('lens'); st.swirl = Post.source('swirl'); }
-    this.sing.lens = Post.source('lens');
-    this.sing.swirl = Post.source('swirl');
-    const W = window.innerWidth, H = window.innerHeight;
-    for (let i = 0; i < MOTES; i++) {
-      const p = this.ctx.particles.spawn({
-        x: rand(0, W), y: rand(0, H), life: 1e9, c: pick(VOID), bright: rand(0.5, 1.1),
-        size: rand(3, 7), fade: 0, flicker: 0.25, tag: 'keep', fn: this.moteFn,
-      });
-      if (!p) break;
-      p.dvx = rand(-14, 14); p.dvy = rand(-14, 14);
-      p.vx = p.dvx; p.vy = p.dvy;
-      this.motes.push(p);
+    const b = this.blue;
+    b.lens = Post.source('lens'); b.swirl = Post.source('swirl');
+    this.purp.lens = Post.source('lens');
+    this.ctx.overlay.painters.add(this.painter);
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    for (let i = 0; i < 10; i++) {
+      const s = this.ctx.phys.shard(rand(0.05, 0.95) * W, rand(-0.4, -0.05) * H, 0, rand(0, 200), pick(['rock', 'rock', 'steel', 'glass']), base * rand(0.018, 0.034), { life: 1e9 });
+      s.prop = true;
     }
   }
 
   exit() {
-    for (const st of Object.values(this.slots)) {
-      st.pull = 0; st.slash = false;
-      st.blade.pts.length = 0; st.blade.update(0);
-      st.sigil.target = 0; st.sigil.level = 0; st.sigil.update(0, 0, 0, 0, 1);
-      st.disk.intensity = 0;
-      release(st.lens); release(st.swirl); st.lens = st.swirl = null;
-    }
-    const s = this.sing;
-    s.t = 0; s.on = false; s.portal = false; s.level = 0; s.pr = 0;
-    s.disk.intensity = 0; s.inner.intensity = 0;
-    s.sigil.target = 0; s.sigil.level = 0; s.sigil.update(0, 0, 0, 0, 1);
-    release(s.lens); release(s.swirl); s.lens = s.swirl = null;
-    this.motes.forEach((p) => { p.life = 0; p.tag = null; p.fn = null; });
-    this.motes.length = 0;
-    this.forces.length = 0;
-    this.timers.length = 0;
-    if (this.zg) { this.zg.on = false; this.zg.t = 0; this.zg.crush = 0; }
-    if (this.ctx.phys) this.ctx.phys.gscale = 1;
+    const b = this.blue, r = this.red, p = this.purp;
+    for (const o of [b, r, p]) { o.orb.intensity = 0; o.glow.intensity = 0; }
+    b.on = false; r.on = false; p.ph = 'none'; b.fly = null; r.shot = null;
+    if (b.well) { this.ctx.phys.dropWell(b.well); b.well = null; }
+    release(b.lens); release(b.swirl); release(p.lens); b.lens = b.swirl = p.lens = null;
+    this.dom.ph = 'none';
+    this.trench.length = 0;
+    this.ctx.overlay.painters.delete(this.painter);
+    this.ctx.phys.gscale = 1;
   }
 
-  moveMote(p, dt) {
-    for (const f of this.forces) {
-      const dx = f.x - p.x, dy = f.y - p.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > f.r * f.r) continue;
-      const d = Math.sqrt(d2) || 1;
-      const k = 1 - d / f.r;
-      const ax = dx / d, ay = dy / d;
-      p.vx += (ax * f.pull * k - ay * f.swirl * k) * dt;
-      p.vy += (ay * f.pull * k + ax * f.swirl * k) * dt;
-      if (f.kill && d < f.kill) { this.respawn(p); return; }
-    }
-    const relax = this.forces.length ? 0.3 : 1.2;
-    p.vx += (p.dvx - p.vx) * dt * relax;
-    p.vy += (p.dvy - p.vy) * dt * relax;
-    const sp = Math.hypot(p.vx, p.vy);
-    if (sp > 1700) { p.vx *= 1700 / sp; p.vy *= 1700 / sp; }
-    const W = window.innerWidth, H = window.innerHeight;
-    if (p.x < -30) p.x = W + 30; else if (p.x > W + 30) p.x = -30;
-    if (p.y < -30) p.y = H + 30; else if (p.y > H + 30) p.y = -30;
-  }
-
-  respawn(p) {
-    const W = window.innerWidth, H = window.innerHeight;
-    const side = (Math.random() * 4) | 0;
-    p.x = side === 0 ? -20 : side === 1 ? W + 20 : rand(0, W);
-    p.y = side === 2 ? -20 : side === 3 ? H + 20 : rand(0, H);
-    p.vx = rand(-30, 30); p.vy = rand(-30, 30);
-  }
-
-  impulse(x, y, radius, power, dir) {
-    for (const p of this.motes) {
-      const dx = p.x - x, dy = p.y - y;
-      const d = Math.hypot(dx, dy) || 1;
-      if (d > radius) continue;
-      let k = 1 - d / radius;
-      if (dir) k *= 0.3 + 0.7 * Math.max(0, (dx * dir.x + dy * dir.y) / d);
-      p.vx += (dx / d) * power * k;
-      p.vy += (dy / d) * power * k;
-    }
-  }
-
-  streak(x, y, a, speed, o = {}) {
+  spark(x, y, a, speed, o = {}) {
     return this.ctx.streaks.spawn({
-      x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, drag: o.drag ?? 1.4, grav: 0,
-      life: o.life ?? rand(0.3, 0.6), c: pick(VOID), bright: o.bright ?? 2.2,
-      width: o.width ?? rand(1.5, 3), stretch: o.stretch ?? 0.04, fade: 1.2, fn: o.fn,
+      x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, drag: o.drag ?? 2, grav: 0,
+      life: o.life ?? rand(0.25, 0.5), c: o.c || BLUE_B, bright: o.bright ?? 2.2,
+      width: o.width ?? rand(1.4, 2.6), stretch: o.stretch ?? 0.04, fade: 1.2,
     });
   }
 
-  inward(x, y, kill = 14) {
-    return (p) => {
-      const dx = x - p.x, dy = y - p.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const v = 300 + 90000 / Math.max(d, 30);
-      p.vx = (dx / d) * v - (dy / d) * v * 0.5;
-      p.vy = (dy / d) * v + (dx / d) * v * 0.5;
-      if (d < kill) p.life = 0;
-    };
+  get base() { return Math.min(window.innerWidth, window.innerHeight); }
+
+  // ---------- Blue ----------
+  updateBlue(dt, time, hands, poses) {
+    const b = this.blue, { phys, sfx, overlay } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = this.base;
+    if (!b.on && !b.fly) {
+      let slot = null;
+      for (const s of ['L', 'R']) if (poses[s] === 'point' && !(this.red.on && this.red.slot === s)) slot = slot || s;
+      b.hold.update(slot, dt);
+      if (slot) { const h = hands[slot]; overlay.chip(h.cx, h.cy + h.scale * 1.8, 'BLUE', b.hold.p, BLUE_B); }
+      if (b.hold.ready) {
+        b.on = true; b.slot = slot; b.k = 0; b.off = 0;
+        const h = hands[slot];
+        b.x = h.tipX; b.y = h.tipY;
+        sfx.play('blue');
+        overlay.callout('蒼', 'Blue', { big: true, dur: 1.2 });
+        this.ctx.onMove(MOVE.blue);
+      }
+    }
+    if (b.on) {
+      const h = hands[b.slot];
+      b.k = Math.min(1, b.k + dt / 0.7);
+      if (h.present) {
+        const tx = h.tipX + h.pdx * h.scale * 0.45, ty = h.tipY + h.pdy * h.scale * 0.45;
+        b.x = damp(b.x, tx, 22, dt); b.y = damp(b.y, ty, 22, dt);
+      }
+      b.off = h.present && poses[b.slot] !== 'point' ? b.off + dt : 0;
+      if (h.present && h.flick && b.k > 0.4) {
+        const v = h.dir();
+        b.fly = { vx: v.x * 1500, vy: v.y * 1500, t: 0 };
+        b.on = false;
+        sfx.play('throw');
+      } else if (b.off > 0.2 || (!h.present && (b.lost = (b.lost || 0) + dt) > 0.5)) {
+        b.on = false;
+        if (!this.purp.eating) this.implode(b.x, b.y, b.k);
+      }
+      if (h.present) b.lost = 0;
+    }
+    if (b.fly) {
+      b.fly.t += dt;
+      b.x += b.fly.vx * dt; b.y += b.fly.vy * dt;
+      b.fly.vx *= Math.exp(-dt * 1.4); b.fly.vy *= Math.exp(-dt * 1.4);
+      if (b.fly.t > 1.4 || b.x < 0 || b.x > W || b.y < 0 || b.y > H) { this.implode(clamp(b.x, 0, W), clamp(b.y, 0, H), 1.3); b.fly = null; }
+    }
+    const live = b.on || !!b.fly;
+    const k = live ? b.k : 0;
+    // gravity: rubble and motes spiral in and are crushed
+    if (live) {
+      if (!b.well) b.well = phys.well(b.x, b.y, 0, 12);
+      b.well.x = b.x; b.well.y = b.y; b.well.GM = 9e6 * k; b.well.rs = base * 0.02;
+      if (Math.random() < 0.9 * k) {
+        const a = rand(0, TAU), d = base * rand(0.3, 0.7);
+        phys.orbiter(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d, -Math.sin(a) * 260, Math.cos(a) * 260, { hue: 0.6, life: 3 });
+      }
+      for (let i = 0; i < 2; i++) {
+        const a = rand(0, TAU), d = base * rand(0.12, 0.3) * k;
+        this.ctx.particles.spawn({ x: b.x + Math.cos(a) * d, y: b.y + Math.sin(a) * d, vx: -Math.cos(a + 0.6) * d * 4, vy: -Math.sin(a + 0.6) * d * 4, drag: 3, life: 0.28, c: BLUE_B, bright: 1.4, size: 4, size1: 1, fade: 1 });
+      }
+      sfx.loop('vortex', 0.4 + k * 0.5); sfx.loop('drone', 0.3 * k);
+    } else if (b.well) { phys.dropWell(b.well); b.well = null; }
+    const R = base * (0.035 + 0.03 * k);
+    b.orb.set(b.x, b.y, R / 0.42 * 2); b.orb.param(0.5, 0.6, 0, 0); b.orb.intensity = damp(b.orb.intensity, live ? 1.0 : 0, 14, dt); b.orb.tick(time);
+    b.glow.set(b.x, b.y, R * 5.5); b.glow.intensity = damp(b.glow.intensity, live ? 0.55 * k : 0, 10, dt); b.glow.tick(time);
+    if (b.lens) { b.lens.x = b.x; b.lens.y = b.y; b.lens.radius = R * 3.2; b.lens.strength = live ? 0.45 * k : 0; b.lens.horizon = 0; b.lens.seed = 0; }
+    if (b.swirl) { b.swirl.x = b.x; b.swirl.y = b.y; b.swirl.radius = R * 7; b.swirl.strength = live ? 1.2 * k : 0; }
+    return live ? 0.5 + k * 0.5 : 0;
+  }
+
+  implode(x, y, power = 1) {
+    const { fx, sfx, phys } = this.ctx;
+    const base = this.base;
+    Post.shockwave({ x, y, speed: -900, width: 60, strength: 20 * power, life: 0.5, r: base * 0.5 });
+    Post.punch(-1 * power, x, y); Post.shake(0.3 * power); Post.aberrate(8);
+    fx.glow({ x, y, s0: base * 0.3, s1: base * 0.02, dur: 0.3, a: BLUE, b: [1, 1, 1], intensity: 3 });
+    fx.ring({ x, y, r0: base * 0.35 * power, r1: 4, dur: 0.35, width: 20, a: BLUE, b: BLUE_B, intensity: 1.6 });
+    setTimeout(() => { phys.blast(x, y, base * 0.45 * power, 1500 * power); Post.flashScreen(0.2, BLUE_B); }, 280);
+    sfx.play('singularity');
+  }
+
+  // ---------- Red ----------
+  updateRed(dt, time, hands, poses) {
+    const r = this.red, { sfx, overlay } = this.ctx;
+    const base = this.base;
+    if (!r.on && !r.shot) {
+      let slot = null;
+      for (const s of ['L', 'R']) if (poses[s] === 'pinch' && !(this.blue.on && this.blue.slot === s)) slot = slot || s;
+      r.hold.update(slot, dt);
+      if (slot) { const h = hands[slot]; overlay.chip(h.cx, h.cy + h.scale * 1.8, 'RED', r.hold.p, RED_B); }
+      if (r.hold.ready) {
+        r.on = true; r.slot = slot; r.k = 0; r.off = 0;
+        const h = hands[slot]; r.x = h.pinchX; r.y = h.pinchY;
+        sfx.play('charge');
+      }
+    }
+    if (r.on) {
+      const h = hands[r.slot];
+      r.k = Math.min(1, r.k + dt / 0.7);
+      if (h.present) { r.x = damp(r.x, h.pinchX, 24, dt); r.y = damp(r.y, h.pinchY, 24, dt); r.dx = h.pdx; r.dy = h.pdy; }
+      sfx.loop('charge', 0.3 + r.k * 0.6);
+      for (let i = 0; i < 2; i++) this.spark(r.x, r.y, rand(0, TAU), rand(150, 500) * r.k, { c: pick([RED, RED_B]), life: 0.18 });
+      // release: snap the pinch open
+      const open = h.present && poses[r.slot] !== 'pinch';
+      r.off = open ? r.off + dt : 0;
+      if (r.off > 0.06) {
+        r.on = false;
+        if (r.k >= 0.35 && !this.purp.eating) this.fireRed(h);
+      }
+      if (!h.present) { r.lost = (r.lost || 0) + dt; if (r.lost > 0.5) r.on = false; } else r.lost = 0;
+    }
+    if (r.shot) {
+      const s = r.shot;
+      s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt;
+      this.ctx.lines.spawn(s.x - s.vx * 0.04, s.y - s.vy * 0.04, s.x, s.y, base * 0.05, RED, 1.2, 0.08);
+      this.ctx.lines.spawn(s.x - s.vx * 0.03, s.y - s.vy * 0.03, s.x, s.y, base * 0.015, [1, 1, 1], 2, 0.08);
+      r.x = s.x; r.y = s.y;
+      const W = window.innerWidth, H = window.innerHeight;
+      if (s.t > 0.38 || s.x < 0 || s.x > W || s.y < 0 || s.y > H) { this.redBoom(clamp(s.x, 0, W), clamp(s.y, 0, H)); r.shot = null; }
+    }
+    const live = r.on || !!r.shot;
+    const R = base * (0.025 + 0.03 * (live ? r.k : 0));
+    r.orb.set(r.x, r.y, R / 0.42 * 2); r.orb.param(0.6, 1, 0, 0); r.orb.intensity = damp(r.orb.intensity, live ? 1.1 : 0, 16, dt); r.orb.tick(time);
+    r.glow.set(r.x, r.y, R * 5.5); r.glow.intensity = damp(r.glow.intensity, live ? 0.55 : 0, 12, dt); r.glow.tick(time);
+    return live ? 0.5 + r.k * 0.5 : 0;
+  }
+
+  fireRed(h) {
+    const r = this.red;
+    // fire the way the pinching finger points, or the way the hand moves
+    let dx = r.dx || 0, dy = r.dy || -1;
+    if (h.present && h.speed > 2.5) { const v = h.dir(); dx = v.x; dy = v.y; }
+    r.shot = { x: r.x, y: r.y, vx: dx * 2300, vy: dy * 2300, t: 0 };
+    this.ctx.sfx.play('snap');
+    this.ctx.overlay.callout('赫', 'Red', { big: true, dur: 1.1 });
+    Post.punch(0.8, r.x, r.y);
+    this.ctx.onMove(MOVE.red);
+  }
+
+  redBoom(x, y) {
+    const { fx, sfx, phys, overlay } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H), base = this.base;
+    const p = this.ctx.voice.power * (0.6 + this.red.k * 0.6);
+    Post.freeze(0.08); Post.impact(0.1, RED_B); Post.flashScreen(0.55, [1, 0.35, 0.3]);
+    Post.shake(0.8); Post.punch(1.8 * p, x, y); Post.aberrate(16);
+    Post.shockwave({ x, y, speed: 1800, width: 140, strength: 50 * p, life: 0.9 });
+    Post.shockwave({ x, y, speed: 900, width: 80, strength: 28 * p, life: 0.9 });
+    fx.glow({ x, y, s0: base * 0.1, s1: diag * 0.9, dur: 0.55, a: RED, b: [1, 0.9, 0.85], intensity: 4 });
+    fx.ring({ x, y, r0: 20, r1: diag * 0.6, dur: 0.6, width: 50, a: RED, b: RED_B, noise: 0.25, intensity: 2 });
+    for (let i = 0; i < 120; i++) this.spark(x, y, rand(0, TAU), rand(700, 2600), { c: pick([RED, RED_B, [1, 1, 1]]), life: rand(0.4, 0.8) });
+    phys.blast(x, y, diag, 4200 * p);
+    phys.burst(x, y, 18, 'rock', { speed: 1700, size: 12, kinds: ['rock', 'glass', 'steel'] });
+    overlay.crack(x, y, 1.1 * p);
+    overlay.sfxText('BWOOM!', x, y - base * 0.1, 1.5, [255, 170, 160]);
+    sfx.play('red');
+  }
+
+  // ---------- Hollow Purple ----------
+  updatePurple(dt, time, hands) {
+    const P = this.purp, b = this.blue, r = this.red, { sfx, overlay, fx, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = this.base, diag = Math.hypot(W, H);
+    P.t += dt;
+    if (P.ph === 'none' && b.on && r.on && b.slot !== r.slot && b.k > 0.5 && r.k > 0.4) {
+      const hs = (hands.L.scale + hands.R.scale) / 2;
+      const d = Math.hypot(b.x - r.x, b.y - r.y) / hs;
+      overlay.chip((b.x + r.x) / 2, (b.y + r.y) / 2 + hs * 1.6, 'BRING THEM TOGETHER', clamp(1 - (d - 1.8) / 4, 0, 1), PURP_B);
+      if (d < 1.8) {
+        P.ph = 'merge'; P.t = 0; P.bx = b.x; P.by = b.y; P.rx = r.x; P.ry = r.y;
+        P.eating = true; this.purp.eating = true;
+        b.on = false; r.on = false;
+        sfx.play('purple');
+        overlay.callout('虚式', 'Imaginary Technique', { dur: 0.9 });
+      }
+    }
+    if (P.ph === 'merge') {
+      // the two spiral into each other, then flash into purple
+      const k = clamp(P.t / 0.7, 0, 1), a = k * TAU * 1.5;
+      const cx = (P.bx + P.rx) / 2, cy = (P.by + P.ry) / 2, rad = Math.hypot(P.bx - P.rx, P.by - P.ry) / 2 * (1 - k);
+      b.x = cx + Math.cos(a) * rad; b.y = cy + Math.sin(a) * rad;
+      r.x = cx - Math.cos(a) * rad; r.y = cy - Math.sin(a) * rad;
+      b.orb.intensity = 1.4; r.orb.intensity = 1.6;
+      for (let i = 0; i < 3; i++) this.spark(cx, cy, rand(0, TAU), rand(300, 1000) * k, { c: pick([PURP_B, RED_B, BLUE_B]) });
+      Post.shake(dt * 1.5 * k); Post.wantDim(0.5 * k);
+      P.x = cx; P.y = cy;
+      if (k >= 1) {
+        P.ph = 'held'; P.t = 0; P.R = base * 0.08;
+        b.orb.intensity = 0; r.orb.intensity = 0; b.glow.intensity = 0; r.glow.intensity = 0;
+        Post.flashScreen(0.8, PURP_B); Post.freeze(0.12); Post.impact(0.12, PURP_B); Post.punch(1.2, cx, cy);
+        overlay.callout('茈', 'Hollow Purple', { big: true, dur: 1.8 });
+        this.ctx.onMove(MOVE.purple);
+      }
+    }
+    if (P.ph === 'held') {
+      const L = hands.L, R = hands.R;
+      const hs = [L, R].filter((h) => h.present);
+      if (hs.length) {
+        const mx = hs.reduce((a, h) => a + h.cx, 0) / hs.length, my = hs.reduce((a, h) => a + h.cy, 0) / hs.length;
+        P.x = damp(P.x, mx, 10, dt); P.y = damp(P.y, my, 10, dt);
+      }
+      P.R = base * (0.08 + Math.min(0.05, P.t * 0.03));
+      Post.wantDim(0.45); sfx.loop('drone', 0.8); sfx.loop('beam', 0.3);
+      const go = hs.find((h) => h.flick || h.thrust);
+      const apart = L.present && R.present && Math.hypot(L.cx - R.cx, L.cy - R.cy) / ((L.scale + R.scale) / 2) > 4.5;
+      if (go || apart || P.t > 6) {
+        let dx, dy;
+        if (go && go.flick) { const v = go.dir(); dx = v.x; dy = v.y; }
+        else { dx = P.x < W / 2 ? 1 : -1; dy = -0.08; }
+        const m = Math.hypot(dx, dy) || 1;
+        P.vx = (dx / m) * 1300; P.vy = (dy / m) * 1300;
+        P.ph = 'fly'; P.t = 0; P.lx = P.x; P.ly = P.y;
+        sfx.play('purple');
+        Post.punch(2, P.x, P.y); Post.shake(0.8);
+      }
+    }
+    if (P.ph === 'fly') {
+      P.x += P.vx * dt; P.y += P.vy * dt;
+      P.R = Math.min(base * 0.22, P.R + dt * base * 0.25);
+      // erase everything in its path
+      this.trench.push({ x0: P.lx, y0: P.ly, x1: P.x, y1: P.y, w: P.R * 1.7, t: 0 });
+      P.lx = P.x; P.ly = P.y;
+      for (const s of phys.shards) {
+        if (Math.hypot(s.x - P.x, s.y - P.y) < P.R * 1.2 && s.age < s.life) {
+          s.age = s.life + 0.99;
+          for (let i = 0; i < 4; i++) this.spark(s.x, s.y, rand(0, TAU), rand(200, 900), { c: PURP_B });
+        }
+      }
+      phys.blast(P.x, P.y, P.R * 3, 1200 * dt * 60);
+      Post.shake(dt * 2.5); Post.aberrate(10); Post.wantDim(0.35);
+      sfx.loop('beam', 1); sfx.loop('drone', 1);
+      if (Math.random() < 0.5) Post.shockwave({ x: P.x, y: P.y, speed: 500, width: 50, strength: 20, life: 0.4, r: P.R });
+      const off = P.x < -P.R * 2 || P.x > W + P.R * 2 || P.y < -P.R * 2 || P.y > H + P.R * 2;
+      if (off || P.t > 2.5) {
+        P.ph = 'fade'; P.t = 0;
+        Post.flashScreen(0.45, PURP_B);
+        overlay.sfxText('...', W / 2, H * 0.3, 1.2, [230, 210, 255]);
+      }
+    }
+    if (P.ph === 'fade' && P.t > 0.5) { P.ph = 'none'; this.purp.eating = false; }
+    const live = P.ph === 'held' || P.ph === 'fly';
+    P.orb.set(P.x, P.y, P.R / 0.42 * 2); P.orb.param(1, 1, 0, 0); P.orb.intensity = damp(P.orb.intensity, live ? 1.0 : 0, 12, dt); P.orb.tick(time);
+    P.glow.set(P.x, P.y, P.R * 4.5); P.glow.intensity = damp(P.glow.intensity, live ? 0.45 : 0, 10, dt); P.glow.tick(time);
+    if (P.lens) { P.lens.x = P.x; P.lens.y = P.y; P.lens.radius = P.R * 2.4; P.lens.strength = live ? 0.5 : 0; P.lens.horizon = 0; }
+    // the trench fades slowly
+    for (let i = this.trench.length - 1; i >= 0; i--) { this.trench[i].t += dt; if (this.trench[i].t > 2.6) this.trench.splice(i, 1); }
+    return live || P.ph === 'merge' ? 1 : 0;
+  }
+
+  // ---------- Domain Expansion ----------
+  updateDomain(dt, time, hands, poses) {
+    const D = this.dom, { overlay, sfx, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight;
+    let slot = null;
+    for (const s of ['L', 'R']) if (poses[s] === 'together') slot = slot || s;
+    D.hold.update(D.ph === 'none' ? slot : null, dt);
+    if (slot && D.ph === 'none') { const h = hands[slot]; overlay.chip(h.cx, h.cy + h.scale * 1.8, 'DOMAIN EXPANSION', D.hold.p, PURP_B); }
+    if (D.ph === 'none' && D.hold.ready) {
+      D.ph = 'open'; D.t = 0;
+      overlay.callout('領域展開', 'Domain Expansion', { big: true, dur: 1.3 });
+      sfx.play('seal', 4);
+      Post.wantDim(1);
+      this.ctx.onMove(MOVE.domain);
+    }
+    D.t += dt;
+    const I = this.ctx.phys.body?.info;
+    const cx = I && I.ok ? I.hx : W / 2, cy = I && I.ok ? I.hy : H * 0.4;
+    if (D.ph === 'open') {
+      Post.wantDim(clamp(D.t / 0.9, 0, 1));
+      if (D.t > 1.0) {
+        D.ph = 'on'; D.t = 0;
+        overlay.callout('無量空処', 'Infinite Void', { big: true, dur: 2.2 });
+        sfx.play('domain');
+        Post.flashScreen(1, [0.9, 0.93, 1]); Post.freeze(0.15); Post.impact(0.15, [1, 1, 1]);
+        Post.shockwave({ x: cx, y: cy, speed: 1200, width: 140, strength: 40, life: 1.2 });
+      }
+    }
+    if (D.ph === 'on') {
+      Post.wantVoid(1, cx, cy);
+      // the world hangs weightless inside the domain
+      phys.gscale = 0.06;
+      for (const s of phys.shards) { s.vx *= Math.exp(-dt * 1.5); s.vy *= Math.exp(-dt * 1.5); s.life = Math.max(s.life, s.age + 1); }
+      if (Math.random() < 0.3) {
+        // information flooding in: streaks rushing past toward you
+        const a = rand(0, TAU), d = Math.hypot(W, H) * 0.7;
+        this.ctx.streaks.spawn({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, vx: -Math.cos(a) * 2200, vy: -Math.sin(a) * 2200, drag: 0, grav: 0, life: 0.3, c: pick([BLUE_B, PURP_B, [1, 1, 1]]), bright: 1.6, width: 1.5, stretch: 0.06, fade: 1 });
+      }
+      sfx.loop('hum', 0.8);
+      if (D.t > 9) { D.ph = 'close'; D.t = 0; sfx.play('whoomp'); }
+    }
+    if (D.ph === 'close') {
+      Post.wantVoid(1 - D.t / 0.8, cx, cy);
+      if (D.t > 0.8) { D.ph = 'none'; phys.gscale = 1; }
+    }
+    return D.ph === 'on' ? 0.7 : 0;
   }
 
   update(dt, time, hands) {
-    this.forces.length = 0;
-    for (let i = this.timers.length - 1; i >= 0; i--) {
-      const t = this.timers[i];
-      t.t -= dt;
-      if (t.t <= 0) { this.timers.splice(i, 1); t.fn(); }
-    }
-    const levels = [0.3, 0.3];
-    this.updateZeroG(hands, dt, time, levels);
-    const singActive = this.updateSing(hands, dt, time, levels);
-    levels[0] = Math.max(levels[0], this.updateHand(this.slots.L, hands.L, dt, time, singActive));
-    levels[1] = Math.max(levels[1], this.updateHand(this.slots.R, hands.R, dt, time, singActive));
-    return levels;
+    const poses = { L: pose(hands.L), R: pose(hands.R) };
+    const lb = this.updateBlue(dt, time, hands, poses);
+    const lr = this.updateRed(dt, time, hands, poses);
+    const lp = this.updatePurple(dt, time, hands);
+    const ld = this.updateDomain(dt, time, hands, poses);
+    const lv = (s) => Math.max(0.25, lp, ld, this.blue.slot === s ? lb : 0, this.red.slot === s ? lr : 0);
+    return [lv('L'), lv('R')];
   }
 
-  // ---------- Zero Gravity + Crush ----------
-  // Both palms open and apart, held still: gravity lets go and the floor's
-  // rubble drifts up. Slam both fists down and it comes back ten times heavier.
-  updateZeroG(hands, dt, time, levels) {
-    const z = this.zg || (this.zg = { on: false, t: 0, away: 0, crush: 0, spawnT: 0, ringT: 0, cool: 0 });
-    const { phys, overlay, sfx, fx } = this.ctx;
-    const L = hands.L, R = hands.R, W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
-    z.cool -= dt;
-    const both = L.present && R.present;
-    let want = false, sc = 80, mx = W / 2, my = H / 2;
-    if (both) {
-      sc = (L.scale + R.scale) / 2; mx = (L.cx + R.cx) / 2; my = (L.cy + R.cy) / 2;
-      const d = Math.hypot(L.cx - R.cx, L.cy - R.cy) / sc;
-      want = L.isOpen && R.isOpen && d > 3 && d < 12 && Math.abs(L.cy - R.cy) < sc * 1.4 && L.speed < 3 && R.speed < 3;
+  // erased trench: a hole cut through the picture with a violet rim
+  paint(g) {
+    if (!this.trench.length) return;
+    g.save();
+    g.lineCap = 'round';
+    for (const s of this.trench) {
+      const a = Math.max(0, 1 - s.t / 2.6);
+      g.strokeStyle = `rgba(0,0,0,${0.92 * a})`;
+      g.lineWidth = s.w;
+      g.beginPath(); g.moveTo(s.x0, s.y0); g.lineTo(s.x1, s.y1); g.stroke();
     }
-    if (!z.on) {
-      z.t = want && z.cool <= 0 ? z.t + dt : 0;
-      if (z.t > 0.5) {
-        z.on = true; z.t = 0; z.away = 0; z.spawnT = 0;
-        overlay.callout('無重力', 'Zero Gravity', { big: true });
-        this.ctx.onMove(5);
-        sfx.play('singularity', 0.8);
-        Post.flashScreen(0.4, [0.8, 0.6, 1]); Post.shockwave({ x: mx, y: my, speed: 900, width: 90, strength: -24, life: 0.8 }); Post.bloom(1.5);
-        phys.blast(mx, H, base * 0.9, 1500);
-      }
-    } else {
-      z.away = both ? 0 : z.away + dt;
-      if (z.away > 0.9 || z.crush > 0) {
-        // let go gently
-        if (z.crush <= 0) { z.on = false; z.cool = 1; }
-      }
+    g.globalCompositeOperation = 'lighter';
+    for (const s of this.trench) {
+      const a = Math.max(0, 1 - s.t / 2.6);
+      g.strokeStyle = `rgba(170,90,255,${0.35 * a})`;
+      g.lineWidth = s.w * 1.12;
+      g.beginPath(); g.moveTo(s.x0, s.y0); g.lineTo(s.x1, s.y1); g.stroke();
+      g.strokeStyle = `rgba(0,0,0,0)`;
     }
-    if (z.crush > 0) {
-      z.crush -= dt;
-      phys.gscale = 4.5;
-      if (z.crush <= 0) { phys.gscale = 1; z.on = false; z.cool = 1.5; }
-      return;
+    g.restore();
+    // re-darken the core so the rim reads as an edge
+    g.save();
+    g.lineCap = 'round';
+    for (const s of this.trench) {
+      const a = Math.max(0, 1 - s.t / 2.6);
+      g.strokeStyle = `rgba(4,0,10,${0.95 * a})`;
+      g.lineWidth = s.w * 0.9;
+      g.beginPath(); g.moveTo(s.x0, s.y0); g.lineTo(s.x1, s.y1); g.stroke();
     }
-    if (!z.on) { phys.gscale = damp(phys.gscale, 1, 3, dt); return; }
-    // floating
-    phys.gscale = damp(phys.gscale, -0.1, 4, dt);
-    z.spawnT -= dt;
-    if (z.spawnT <= 0) {
-      z.spawnT = 0.05;
-      phys.shard(rand(0.03, 0.97) * W, H * 0.98, rand(-40, 40), -rand(180, 520), pick(['rock', 'glass', 'rock', 'steel']), rand(9, 22), { hot: 0 });
-    }
-    for (const s of phys.shards) { s.vx *= 1 - dt * 0.7; s.vy *= 1 - dt * 0.35; s.vr += Math.sin(time * 2 + s.x) * dt * 2; }
-    z.ringT -= dt;
-    if (z.ringT <= 0 && both) {
-      z.ringT = 0.45;
-      fx.ring({ x: mx, y: my, r0: sc, r1: base * 0.7, dur: 0.9, width: 6, a: CH.a, b: CH.b, intensity: 1.1 });
-    }
-    Post.wantAura(0.3, CH.a, CH.b);
-    Post.wantDim(0.25);
-    Post.wantZoom(-0.02, mx, my);
-    levels[0] = Math.max(levels[0], 1); levels[1] = Math.max(levels[1], 1);
-    // the crush: both fists driven down
-    if (both && L.fist && R.fist && (L.vy + R.vy) / 2 / sc > CONFIG.slamSpeed * 0.7) {
-      z.crush = 0.8;
-      phys.gscale = 4.5;
-      for (const s of phys.shards) s.vy += 900;
-      const cx = mx, cy = Math.min(H * 0.9, my + sc * 2);
-      Post.impact(0.16, [0.8, 0.6, 1]); Post.flashScreen(0.7, [0.85, 0.7, 1]); Post.freeze(0.12); Post.shake(1);
-      Post.punch(2.2, cx, cy); Post.aberrate(16); Post.bloom(2.5);
-      Post.shockwave({ x: cx, y: H * 0.95, speed: 1500, width: 90, strength: 40, life: 0.8 });
-      fx.ring({ x: cx, y: H * 0.95, r0: 10, r1: W * 0.7, dur: 0.6, width: 22, a: CH.a, b: CH.b, intensity: 2 });
-      overlay.callout('重圧', 'Crush', { big: true });
-      overlay.crack(cx, H * 0.95, 1.5);
-      overlay.sfxText('DOGOOM!', cx, H * 0.55, 1.4, [200, 170, 255]);
-      sfx.play('thud', 1.6);
-    }
+    g.restore();
   }
 
-  // ---------- Pull + Push ----------
-  updateHand(st, h, dt, time, busy) {
-    const { overlay, sfx, fx } = this.ctx;
-    st.calloutCool -= dt;
-    st.pushCool -= dt;
-    this.updateSlash(st, h, dt, time);
-    let want = 0;
-    if (h.present && Math.random() < dt * 14) {
-      // void wisps seeping off the fingertips
-      const p = h.pts[pick([4, 8, 12, 16, 20])];
-      this.ctx.particles.spawn({ x: p.x, y: p.y, vx: rand(-40, 40), vy: rand(-70, -20), drag: 1.2, life: rand(0.5, 0.9),
-        c: pick(VOID), bright: 0.7, size: rand(5, 9), size1: 14, fade: 1.2, flicker: 0.2 });
-    }
-    if (h.present) {
-      st.x = damp(st.x || h.cx, h.cx, 20, dt);
-      st.y = damp(st.y || h.cy, h.cy, 20, dt);
-      st.size = h.scale;
-      if (!busy && (h.cupped || h.fist) && h.still) want = 1;
-      if (!busy && h.isOpen && (h.flick || h.thrust) && st.pushCool <= 0) this.push(h, h.thrust && !h.flick);
-    }
-    st.pull = damp(st.pull, want, want ? 2.6 : 6, dt);
-    if (st.pull < 0.003) st.pull = 0;
-    const P = st.pull;
-    if (P > 0.6 && want && st.calloutCool <= 0) {
-      overlay.callout('引力', 'Pull');
-      this.ctx.onMove(0);
-      st.calloutCool = 3;
-    }
-
-    st.sigil.target = P > 0.05 ? 1 : 0;
-    st.sigil.charge = P;
-    st.sigil.update(dt, time, st.x, st.y, st.size * 3.1, -(0.6 + P * 3));
-    st.disk.set(st.x, st.y, st.size * (0.6 + P * 1.4), undefined, 0);
-    st.disk.intensity = P > 0.01 ? P * 0.75 : 0;
-    st.disk.tick(time);
-    if (st.lens) {
-      st.lens.x = st.x; st.lens.y = st.y;
-      st.lens.radius = st.size * 0.5;
-      st.lens.strength = P * 0.5;
-      st.lens.horizon = st.size * 0.13 * P;
-      st.lens.seed = 0;
-    }
-    if (st.swirl) {
-      st.swirl.x = st.x; st.swirl.y = st.y;
-      st.swirl.radius = st.size * 3.2;
-      st.swirl.strength = P * 0.9;
-    }
-    if (P > 0.01) {
-      const r = Math.max(280, st.size * 6);
-      this.forces.push({ x: st.x, y: st.y, r, pull: 2600 * P, swirl: 1500 * P, kill: st.size * 0.35 });
-      const n = Math.floor(90 * P * dt + Math.random());
-      for (let i = 0; i < n; i++) {
-        const a = rand(0, TAU), d = st.size * rand(2.2, 3.6);
-        this.streak(st.x + Math.cos(a) * d, st.y + Math.sin(a) * d, 0, 0, { life: 0.5, fn: this.inward(st.x, st.y, st.size * 0.2), drag: 0 });
-      }
-      sfx.loop('vortex', P);
-      Post.wantDim(P * 0.35);
-      Post.wantZoom(P * 0.06, st.x, st.y);
-      Post.wantAura(P * 0.35, [0.4, 0.16, 1.0], [0.85, 0.7, 1.0]);
-      return 0.35 + P * 1.1;
-    }
-    return 0.3;
-  }
-
-  // ---------- Rift Cut ----------
-  updateSlash(st, h, dt, time) {
-    st.riftCool -= dt;
-    const fast = h.present && h.point && h.speed > CONFIG.slashSpeed * (st.slash ? 0.45 : 1);
-    if (fast) {
-      if (!st.slash) {
-        st.slash = true; st.slashT = 0;
-        st.sx = h.tipX; st.sy = h.tipY;
-        this.ctx.sfx.play('whip');
-      }
-      st.slashT += dt;
-      st.ex = h.tipX; st.ey = h.tipY;
-      st.blade.width = h.scale * 0.5;
-      st.blade.push(h.tipX, h.tipY, time);
-      for (let i = 0; i < 2; i++) this.streak(h.tipX, h.tipY, Math.atan2(-h.vy, -h.vx) + rand(-0.4, 0.4), rand(100, 400), { life: 0.25 });
-    } else if (st.slash) {
-      st.slash = false;
-      const len = Math.hypot(st.ex - st.sx, st.ey - st.sy);
-      if (len > h.scale * 2.2 && st.riftCool <= 0 && st.slashT < 0.8) this.rift(st.sx, st.sy, st.ex, st.ey, h.scale);
-    }
-    st.blade.update(time);
-  }
-
-  rift(x0, y0, x1, y1, sc) {
-    const { fx, sfx, overlay } = this.ctx;
-    const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len, uy = dy / len;
-    // overshoot both ends: the cut runs past the fingertip
-    const ax = x0 - ux * len * 0.25, ay = y0 - uy * len * 0.25;
-    const bx = x1 + ux * len * 0.35, by = y1 + uy * len * 0.35;
-    Post.tear({ x0: ax, y0: ay, x1: bx, y1: by, strength: 30, width: 12, life: 1.6 });
-    Post.freeze(0.08);
-    Post.shake(0.6);
-    Post.aberrate(12);
-    Post.flashScreen(0.2, [0.85, 0.75, 1]);
-    Post.bloom(1.4);
-    const mx = (ax + bx) / 2, my = (ay + by) / 2;
-    // the two sides of space get shoved apart
-    for (const p of this.motes) {
-      const rx = p.x - mx, ry = p.y - my;
-      const along = rx * ux + ry * uy;
-      if (Math.abs(along) > len * 0.9) continue;
-      const perp = -rx * uy + ry * ux;
-      const k = Math.exp(-Math.abs(perp) / 260);
-      const s = perp < 0 ? -1 : 1;
-      p.vx += -uy * s * 1600 * k; p.vy += ux * s * 1600 * k;
-    }
-    for (let i = 0; i < 90; i++) {
-      const t = rand(0, 1);
-      const px = lerp(ax, bx, t), py = lerp(ay, by, t);
-      const side = Math.random() < 0.5 ? -1 : 1;
-      this.streak(px, py, Math.atan2(ux * side, -uy * side) + rand(-0.3, 0.3), rand(300, 1100), { life: rand(0.3, 0.6) });
-    }
-    fx.glow({ x: mx, y: my, s0: sc, s1: len * 1.2, dur: 0.3, a: CH.a, b: [1, 1, 1], intensity: 2 });
-    overlay.callout('空間斬', 'Rift Cut', { big: true, dur: 1.3 });
-    sfx.play('tear');
-    this.ctx.onMove(4);
-    for (const st of Object.values(this.slots)) st.riftCool = 0.5;
-  }
-
-  push(h, toCamera) {
-    const { fx, sfx, overlay } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
-    const x = h.cx, y = h.cy;
-    const dir = toCamera ? null : h.dir();
-    const pw = this.ctx.voice.power;
-    this.slots[h.slot].pushCool = 0.45;
-    this.impulse(x, y, toCamera ? diag : diag * 0.7, (toCamera ? 2600 : 2000) * pw, dir);
-    Post.shockwave({ x, y, speed: 1300, width: 80, strength: (toCamera ? 46 : 36) * pw, life: 0.75 });
-    if (pw > 1.35) { Post.impact(0.08, [0.85, 0.78, 1]); this.ctx.overlay.crack(x, y, 1); }
-    Post.shockwave({ x, y, speed: 700, width: 50, strength: 20, life: 0.6 });
-    fx.ring({ x, y, r0: h.scale * 0.5, r1: diag * (toCamera ? 0.75 : 0.5), dur: 0.6, width: 22, a: CH.a, b: CH.b, noise: 0.05, intensity: 1.8 });
-    fx.glow({ x, y, s0: h.scale, s1: h.scale * 6, dur: 0.3, a: CH.a, b: CH.b, intensity: 2.4 });
-    Post.aberrate(toCamera ? 12 : 8);
-    Post.shake(toCamera ? 0.7 : 0.45);
-    Post.punch(toCamera ? 2 : 1, x, y);
-    Post.bloom(1.2);
-    if (toCamera) {
-      Post.impact(0.08, [0.85, 0.78, 1]);
-      Post.flashScreen(0.3, [0.7, 0.55, 1]);
-    }
-    for (let i = 0; i < 70; i++) {
-      let a = rand(0, TAU);
-      if (dir && Math.random() < 0.7) a = Math.atan2(dir.y, dir.x) + rand(-0.7, 0.7);
-      this.streak(x, y, a, rand(500, 1600), { life: rand(0.3, 0.6) });
-    }
-    overlay.callout('斥力', 'Push');
-    sfx.play('push');
-    this.ctx.onMove(1);
-  }
-
-  // ---------- Singularity + Portal ----------
-  updateSing(hands, dt, time, levels) {
-    const s = this.sing, L = hands.L, R = hands.R;
-    const { overlay, sfx, fx } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight;
-    const diag = Math.hypot(W, H), base = Math.min(W, H);
-    let hold = false;
-    if (L.present && R.present) {
-      const sc = (L.scale + R.scale) / 2;
-      const d = Math.hypot(L.cx - R.cx, L.cy - R.cy) / sc;
-      const limit = CONFIG.touchDist * (s.on ? 1.6 : 1.25);
-      if (d < limit && L.speed < CONFIG.stillSpeed * 2.2 && R.speed < CONFIG.stillSpeed * 2.2) {
-        hold = true;
-        const mx = (L.cx + R.cx) / 2, my = (L.cy + R.cy) / 2;
-        s.x = s.t > 0 ? damp(s.x, mx, 10, dt) : mx;
-        s.y = s.t > 0 ? damp(s.y, my, 10, dt) : my;
-        s.sc = sc;
-      }
-    }
-    s.lost = hold ? 0 : s.lost + dt;
-    if (hold) s.t += dt * this.ctx.voice.boost;
-
-    if (!s.on && s.t > 0.2) {
-      s.on = true;
-      overlay.callout('特異点', 'Singularity');
-      this.ctx.onMove(2);
-      sfx.play('whoomp');
-      fx.ring({ x: s.x, y: s.y, r0: diag * 0.45, r1: s.sc * 0.5, dur: 0.45, width: 16, a: CH.a, b: CH.b, intensity: 1.6 });
-    }
-    if (s.on && !s.portal && s.t >= CONFIG.portalHold) this.openPortal();
-    if (s.on && s.lost > 0.18) this.closeSing();
-    if (!s.on && !hold) s.t = 0;
-
-    s.level = damp(s.level, s.on ? clamp((s.t - 0.2) / 1.0, 0.15, 1) : 0, s.on ? 4 : 9, dt);
-    s.pr = damp(s.pr, s.portal ? 1 : 0, s.portal ? 4 : 10, dt);
-    const lv = s.level, pr = s.pr;
-    if (lv < 0.003 && pr < 0.003) {
-      s.disk.intensity = 0; s.inner.intensity = 0;
-      s.sigil.target = 0; s.sigil.update(dt, time, s.x, s.y, 10);
-      if (s.lens) s.lens.strength = 0;
-      if (s.swirl) s.swirl.strength = 0;
-      return false;
-    }
-
-    const holeR = s.sc * (0.3 + lv * 0.55);
-    const portalR = clamp(s.sc * 2.2, base * 0.16, base * 0.3);
-    const horizon = holeR + (portalR * 0.85 - holeR) * pr;
-    s.lens.x = s.x; s.lens.y = s.y;
-    s.lens.horizon = horizon;
-    s.lens.seed = pr;
-    s.lens.radius = horizon;
-    s.lens.strength = 1.1 + lv * 0.35 + pr * 0.15;
-    s.swirl.x = s.x; s.swirl.y = s.y;
-    s.swirl.radius = horizon * 5;
-    s.swirl.strength = 0.8 * lv + pr * 1.4;
-
-    const diskS = (horizon * 2) / 0.3;
-    s.disk.set(s.x, s.y, diskS, undefined, 0);
-    s.disk.param(0.3, 0.95 - pr * 0.5, 2.5 + lv * 3 + pr * 3, 0);
-    s.disk.intensity = 0.25 + lv * 0.35 - pr * 0.05;
-    s.disk.tick(time);
-    s.sigil.target = pr > 0.05 ? 1 : 0;
-    s.sigil.charge = 1;
-    s.sigil.update(dt, time, s.x, s.y, horizon * 3.6, 0.9);
-
-    this.forces.push({ x: s.x, y: s.y, r: diag, pull: (1800 + 2600 * lv) * (1 - pr * 0.6), swirl: 900 + 2600 * pr, kill: pr > 0.5 ? 0 : horizon });
-    const n = Math.floor((60 + 140 * lv) * dt + Math.random());
-    for (let i = 0; i < n; i++) {
-      const a = rand(0, TAU), d = diag * rand(0.35, 0.6);
-      this.streak(s.x + Math.cos(a) * d, s.y + Math.sin(a) * d, 0, 0, { life: 0.9, fn: this.inward(s.x, s.y, horizon * 1.05), drag: 0, width: rand(1.5, 3.5) });
-    }
-    if (pr > 0.3 && Math.random() < 0.8) {
-      const a = rand(0, TAU);
-      this.streak(s.x + Math.cos(a) * horizon * 1.1, s.y + Math.sin(a) * horizon * 1.1, a + Math.PI / 2, rand(400, 900), { life: 0.5 });
-    }
-    sfx.loop('drone', 0.35 + lv * 0.65);
-    if (pr > 0.05) sfx.loop('hum', pr);
-    Post.wantDim(0.5 + lv * 0.3 + pr * 0.15);
-    Post.wantZoom(0.05 + lv * 0.08 + pr * 0.04, s.x, s.y);
-    Post.wantAura(0.35 + lv * 0.45 + pr * 0.3, [0.4, 0.16, 1.0], [0.85, 0.7, 1.0]);
-    Post.shake(dt * (0.5 + lv * 0.9 + pr * 0.6));
-    overlay.letterbox(Math.max(lv, pr));
-    levels[0] = Math.max(levels[0], 0.8 + lv);
-    levels[1] = Math.max(levels[1], 0.8 + lv);
-    return s.on;
-  }
-
-  openPortal() {
-    const s = this.sing;
-    const { fx, sfx, overlay } = this.ctx;
-    const diag = Math.hypot(window.innerWidth, window.innerHeight);
-    s.portal = true;
-    Post.impact(0.12, [0.88, 0.8, 1]);
-    Post.flashScreen(0.6, [0.75, 0.6, 1]);
-    Post.shake(1);
-    Post.punch(2.2, s.x, s.y);
-    Post.aberrate(12);
-    Post.bloom(2);
-    Post.shockwave({ x: s.x, y: s.y, speed: 1600, width: 100, strength: 50, life: 0.9 });
-    fx.ring({ x: s.x, y: s.y, r0: 20, r1: diag * 0.75, dur: 0.8, width: 40, a: CH.a, b: CH.b, noise: 0.12, intensity: 2.2 });
-    fx.glow({ x: s.x, y: s.y, s0: 100, s1: diag, dur: 0.6, a: CH.a, b: [1, 1, 1], intensity: 3.2 });
-    for (let i = 0; i < 160; i++) this.streak(s.x, s.y, rand(0, TAU), rand(700, 2200), { life: rand(0.4, 0.8), width: rand(2, 4) });
-    this.impulse(s.x, s.y, diag, 1800);
-    overlay.callout('虚空門', 'Portal', { big: true, dur: 1.6 });
-    overlay.crack(s.x, s.y, 1.3);
-    Post.freeze(0.1);
-    sfx.play('portal');
-    this.ctx.onMove(3);
-  }
-
-  closeSing() {
-    const s = this.sing;
-    const { fx, sfx } = this.ctx;
-    const x = s.x, y = s.y, wasPortal = s.portal;
-    const R = s.sc * (wasPortal ? 3 : 1);
-    s.on = false; s.portal = false; s.t = 0;
-    sfx.play('collapse');
-    fx.ring({ x, y, r0: R * 1.4, r1: 4, dur: 0.3, width: 14, a: CH.a, b: CH.b, intensity: 1.8 });
-    this.timers.push({
-      t: 0.3,
-      fn: () => {
-        const diag = Math.hypot(window.innerWidth, window.innerHeight);
-        Post.shockwave({ x, y, speed: 1400, width: 80, strength: wasPortal ? 44 : 30, life: 0.7 });
-        Post.flashScreen(wasPortal ? 0.45 : 0.25, [0.8, 0.7, 1]);
-        Post.shake(wasPortal ? 0.8 : 0.5);
-        Post.punch(1.4, x, y);
-        Post.aberrate(9);
-        fx.glow({ x, y, s0: 40, s1: diag * 0.6, dur: 0.4, a: CH.a, b: [1, 1, 1], intensity: 3 });
-        this.impulse(x, y, diag, wasPortal ? 2400 : 1600);
-        for (let i = 0; i < 90; i++) this.streak(x, y, rand(0, TAU), rand(500, 1800));
-      },
-    });
-  }
+  dbg() { return { blue: this.blue.on ? this.blue.k.toFixed(1) : (this.blue.fly ? 'fly' : '-'), red: this.red.on ? this.red.k.toFixed(1) : (this.red.shot ? 'shot' : '-'), purp: this.purp.ph, dom: this.dom.ph }; }
 }

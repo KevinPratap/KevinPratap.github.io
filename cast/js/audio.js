@@ -347,6 +347,84 @@ export class SFX {
         this.tone({ f0: 130, f1: 24, dur: 1.4, gain: 1.0, when: 0.5 });
         [330, 495, 660].forEach((f, i) => this.tone({ type: 'sawtooth', f0: f, f1: f * 1.6, dur: 1.2, gain: 0.06, attack: 0.1, send: 0.8, when: 0.5 + 0.03 * i }));
         break;
+      // ---- blade & telekinesis ----
+      case 'ignite':
+        // snap-hiss: a bright crack, then a rising saw that settles into the hum
+        this.hit({ type: 'highpass', f0: 3500, f1: 900, dur: 0.12, gain: 0.5, attack: 0.002, send: 0.3 });
+        this.tone({ type: 'sawtooth', f0: 60, f1: 180, dur: 0.35, gain: 0.3, send: 0.35 });
+        this.hit({ type: 'bandpass', f0: 600, f1: 2400, q: 2, dur: 0.3, gain: 0.35, send: 0.3 });
+        break;
+      case 'retract':
+        this.tone({ type: 'sawtooth', f0: 180, f1: 40, dur: 0.3, gain: 0.28, send: 0.3 });
+        this.hit({ type: 'bandpass', f0: 2000, f1: 400, q: 2, dur: 0.25, gain: 0.25 });
+        break;
+      case 'swing':
+        this.hit({ type: 'bandpass', f0: 300 * s, f1: 1100 * s, q: 3, dur: 0.22, gain: 0.28, attack: 0.03, send: 0.25 });
+        this.tone({ type: 'sawtooth', f0: 140 * s, f1: 95, dur: 0.22, gain: 0.12, send: 0.2 });
+        break;
+      case 'blaster':
+        this.tone({ type: 'square', f0: 1900, f1: 180, dur: 0.18, gain: 0.16, send: 0.3 });
+        this.tone({ type: 'sawtooth', f0: 1200, f1: 90, dur: 0.22, gain: 0.1, send: 0.4 });
+        break;
+      case 'deflect':
+        this.tone({ type: 'square', f0: 2600, f1: 900, dur: 0.12, gain: 0.18, send: 0.35 });
+        this.hit({ type: 'highpass', f0: 4200, f1: 2000, dur: 0.1, gain: 0.45, attack: 0.002, send: 0.3 });
+        this.tone({ type: 'sawtooth', f0: 240, f1: 120, dur: 0.18, gain: 0.2 });
+        break;
+      case 'clash':
+        this.hit({ type: 'highpass', f0: 5000, f1: 1600, dur: 0.25, gain: 0.6, attack: 0.001, send: 0.45 });
+        this.tone({ type: 'sawtooth', f0: 300, f1: 90, dur: 0.3, gain: 0.3, send: 0.3 });
+        break;
+      case 'crush':
+        // metal crumpling: stacked short bandpassed noise hits
+        for (let i = 0; i < 5; i++) this.hit({ type: 'bandpass', f0: 1400 - i * 180, f1: 300, q: 4, dur: 0.12, gain: 0.35, attack: 0.002, when: i * 0.045, send: 0.2 });
+        this.tone({ f0: 140, f1: 40, dur: 0.4, gain: 0.7 });
+        break;
+      case 'lift':
+        this.hit({ type: 'lowpass', f0: 120, f1: 900, dur: 1.2, gain: 0.5, attack: 0.4, send: 0.5 });
+        this.tone({ f0: 50, f1: 70, dur: 1.2, gain: 0.5, attack: 0.3 });
+        break;
+      case 'slam':
+        this.tone({ f0: 90, f1: 22, dur: 0.9, gain: 1.0 });
+        this.hit({ type: 'lowpass', f0: 2600, f1: 60, dur: 1.1, gain: 0.9, send: 0.5 });
+        break;
+      // ---- ninja ----
+      case 'rasengan':
+        this.hit({ type: 'bandpass', f0: 300, f1: 2200, q: 1.2, dur: 0.6, gain: 0.5, attack: 0.1, send: 0.4 });
+        this.tone({ f0: 90, f1: 220, dur: 0.6, gain: 0.35 });
+        break;
+      case 'chidori':
+        this.hit({ type: 'highpass', f0: 3000, f1: 7000, dur: 0.3, gain: 0.35, attack: 0.02, send: 0.3 });
+        this.tone({ type: 'square', f0: 2200, f1: 3200, dur: 0.3, gain: 0.08 });
+        break;
+      case 'fireball':
+        this.hit({ type: 'lowpass', f0: 400, f1: 2600, dur: 1.4, gain: 0.95, attack: 0.25, send: 0.5 });
+        this.tone({ f0: 70, f1: 38, dur: 1.4, gain: 0.8, attack: 0.1 });
+        break;
+      // ---- limitless ----
+      case 'blue':
+        this.tone({ type: 'sine', f0: 900, f1: 180, dur: 0.6, gain: 0.3, send: 0.6 });
+        this.hit({ type: 'lowpass', f0: 3000, f1: 200, dur: 0.8, gain: 0.5, attack: 0.1, send: 0.5 });
+        break;
+      case 'red':
+        this.tone({ type: 'sawtooth', f0: 90, f1: 420, dur: 0.35, gain: 0.35, send: 0.4 });
+        this.hit({ type: 'lowpass', f0: 5000, f1: 120, dur: 0.9, gain: 0.95, attack: 0.002, send: 0.5 });
+        this.tone({ f0: 110, f1: 26, dur: 0.8, gain: 0.95 });
+        break;
+      case 'purple':
+        this.tone({ type: 'sine', f0: 1800, f1: 60, dur: 2.4, gain: 0.35, send: 0.8 });
+        this.hit({ type: 'lowpass', f0: 7000, f1: 50, dur: 2.2, gain: 1.0, attack: 0.02, send: 0.7 });
+        this.tone({ f0: 70, f1: 20, dur: 2.0, gain: 1.0 });
+        break;
+      case 'domain':
+        // a deep bell toll with a shimmering cluster over it
+        [55, 110, 165.5, 221].forEach((f, i) => this.tone({ type: 'sine', f0: f, f1: f * 0.995, dur: 3.2, gain: 0.3 / (i + 1), attack: 0.004, send: 0.9 }));
+        [1318, 1760, 2349, 2637].forEach((f, i) => this.tone({ type: 'triangle', f0: f, f1: f * 1.004, dur: 2.4, gain: 0.04, attack: 0.3, send: 1.0, when: 0.2 + i * 0.12 }));
+        this.hit({ type: 'lowpass', f0: 200, f1: 3000, dur: 2.5, gain: 0.5, attack: 1.2, send: 0.8 });
+        break;
+      case 'snap':
+        this.hit({ type: 'bandpass', f0: 2800, f1: 2400, q: 3, dur: 0.05, gain: 0.7, attack: 0.001, send: 0.3 });
+        break;
       case 'shutter':
         this.tone({ type: 'square', f0: 1600, f1: 1500, dur: 0.04, gain: 0.08, send: 0 });
         break;
@@ -465,7 +543,47 @@ export class SFX {
       jo.frequency.setTargetAtTime(160 + L * 300, t, 0.1);
     };
 
-    this.loops = { charge, roar, drone, hum, vortex, buzz, beam, jet };
+    // Lightsaber hum: two detuned saws through a resonant lowpass. Swing
+    // speed opens the filter and bends the pitch like a doppler sweep.
+    const saber = bus(0.3);
+    const sf = ctx.createBiquadFilter(); sf.type = 'lowpass'; sf.frequency.value = 380; sf.Q.value = 6;
+    const s1 = ctx.createOscillator(); s1.type = 'sawtooth'; s1.frequency.value = 88;
+    const s2 = ctx.createOscillator(); s2.type = 'sawtooth'; s2.frequency.value = 90.5;
+    const sfl = ctx.createOscillator(); sfl.frequency.value = 6.5;
+    const sfa = ctx.createGain(); sfa.gain.value = 1.5;
+    sfl.connect(sfa); sfa.connect(s1.frequency); sfl.start();
+    s1.connect(sf); s2.connect(sf); s1.start(); s2.start();
+    sf.connect(saber.g);
+    saber.apply = (L, t) => {
+      const sw = Math.max(0, L - 0.4) / 0.6;
+      sf.frequency.setTargetAtTime(380 + sw * 2200, t, 0.03);
+      s1.frequency.setTargetAtTime(88 + sw * 60, t, 0.04);
+      s2.frequency.setTargetAtTime(90.5 + sw * 64, t, 0.04);
+    };
+
+    // Chidori: thousands of birds. High noise chirped by a fast LFO.
+    const chirp = bus(0.35);
+    const chf = ctx.createBiquadFilter(); chf.type = 'bandpass'; chf.frequency.value = 4200; chf.Q.value = 3;
+    const chl = ctx.createOscillator(); chl.type = 'sawtooth'; chl.frequency.value = 23;
+    const cha = ctx.createGain(); cha.gain.value = 2600;
+    chl.connect(cha); cha.connect(chf.frequency); chl.start();
+    const chg = ctx.createGain(); chg.gain.value = 0.7;
+    const chq = ctx.createOscillator(); chq.type = 'square'; chq.frequency.value = 47;
+    const chqa = ctx.createGain(); chqa.gain.value = 0.35;
+    chq.connect(chqa); chqa.connect(chg.gain); chq.start();
+    noiseSrc().connect(chf); chf.connect(chg); chg.connect(chirp.g);
+    chirp.apply = (L, t) => chl.frequency.setTargetAtTime(18 + L * 16, t, 0.1);
+
+    // Spinning wind for the Rasengan.
+    const spin = bus(0.45);
+    const spf = ctx.createBiquadFilter(); spf.type = 'bandpass'; spf.Q.value = 2.5; spf.frequency.value = 900;
+    const spl = ctx.createOscillator(); spl.frequency.value = 14;
+    const spa = ctx.createGain(); spa.gain.value = 500;
+    spl.connect(spa); spa.connect(spf.frequency); spl.start();
+    noiseSrc().connect(spf); spf.connect(spin.g);
+    spin.apply = (L, t) => { spl.frequency.setTargetAtTime(8 + L * 22, t, 0.1); spf.frequency.setTargetAtTime(600 + L * 1400, t, 0.1); };
+
+    this.loops = { charge, roar, drone, hum, vortex, buzz, beam, jet, saber, chirp, spin };
   }
 
   // Engines raise loop levels every frame; unset loops fade out.

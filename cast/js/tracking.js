@@ -113,6 +113,8 @@ export class HandState {
     this.ux = 0; this.uy = -1; this.hx = 0; this.hy = -1;
     this.mdx = 0; this.mdy = -1;
     this.label = '';
+    // finger snap: thumb pressed to the middle finger, then flung apart
+    this.snap = false; this.snapPrime = 0; this.snapGrace = 0; this.snapD = 1;
     this.fist = false; this.isOpen = false; this.cupped = false; this.still = false;
     this.stillTime = 0; this.lostTime = 0;
     this.flick = false; this.thrust = false;
@@ -183,6 +185,7 @@ export class HandState {
 
   update(dt) {
     this.flick = false;
+    this.snap = false;
     this.thrust = false;
     this.justAppeared = this._appeared;
     this._appeared = false;
@@ -256,6 +259,16 @@ export class HandState {
       const raw = this.pinch ? d < 0.42 : d < 0.28 && E[0] > 0.12;
       this.pinch = this.db.pinch.update(raw, dt);
       this.pinchX = (p[4].x + p[8].x) / 2; this.pinchY = (p[4].y + p[8].y) / 2;
+    }
+    {
+      const sd = Math.hypot(p[4].x - p[12].x, p[4].y - p[12].y) / this.scale;
+      this.snapD = sd;
+      if (sd < 0.34) { this.snapPrime += dt; this.snapGrace = 0.2; }
+      else {
+        this.snapGrace -= dt;
+        if (sd > 0.5 && this.snapGrace > 0 && this.snapPrime > 0.1) { this.snap = true; this.snapPrime = 0; this.snapGrace = 0; }
+        if (this.snapGrace <= 0) this.snapPrime = 0;
+      }
     }
     const sign = this.point || this.two;
     this.fist = !sign && this.db.fist.update(this.fist ? this.open < CONFIG.fistExit : this.open < CONFIG.fistEnter, dt);

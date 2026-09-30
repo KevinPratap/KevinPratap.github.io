@@ -24,6 +24,42 @@ export class Body {
     this.interval = 1000 / 15;
     this.img = null;
     this.mdata = null; this.mw = 0; this.mh = 0;
+    // Where you are, in screen px: body centre, top of your head, face.
+    this._info = { ok: false, cx: 0, cy: 0, top: 0, hx: 0, hy: 0, w: 0 };
+    this.norm = null;
+  }
+
+  // Scan the mask coarsely for the person: the topmost rows are the head.
+  locate() {
+    const d = this.mdata, w = this.mw, h = this.mh;
+    if (!d) return;
+    const st = Math.max(1, (w / 64) | 0);
+    let top = -1, sx = 0, sy = 0, n = 0, minX = w, maxX = 0;
+    for (let y = 0; y < h; y += st) {
+      for (let x = 0; x < w; x += st) {
+        if (d[y * w + x] > 0.5) {
+          if (top < 0) top = y;
+          sx += x; sy += y; n++;
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+        }
+      }
+    }
+    if (n < 20) { this.norm = null; return; }
+    // head: the person pixels in the band just under the top
+    let hx = 0, hn = 0;
+    const band = top + Math.max(st, (h * 0.12) | 0);
+    for (let y = top; y < band && y < h; y += st) for (let x = 0; x < w; x += st) if (d[y * w + x] > 0.5) { hx += x; hn++; }
+    this.norm = { cu: sx / n / w, cv: sy / n / h, hu: (hn ? hx / hn : sx / n) / w, tv: top / h, wu: (maxX - minX) / w };
+  }
+
+  // Screen-space view of the last scan (recomputed so it tracks resizes).
+  get info() {
+    const I = this._info, N = this.norm, P = Projector;
+    if (!N) { I.ok = false; return I; }
+    const X = (u) => (1 - u) * P.vw * P.s + P.ox, Y = (v) => v * P.vh * P.s + P.oy;
+    I.ok = true; I.cx = X(N.cu); I.cy = Y(N.cv); I.top = Y(N.tv); I.hx = X(N.hu);
+    I.hy = Y(N.tv + 0.1); I.w = N.wu * P.vw * P.s;
+    return I;
   }
 
   // Loads lazily and quietly: if it fails, the app simply runs without the
@@ -81,6 +117,7 @@ export class Body {
     if (!this.mdata || this.mdata.length !== data.length) this.mdata = new Float32Array(data.length);
     this.mdata.set(data);
     this.mw = w; this.mh = h;
+    this.locate();
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w; this.canvas.height = h; this.img = null;
     }
@@ -104,5 +141,6 @@ export class Body {
     this.mdata = new Float32Array(w * h);
     for (let i = 0; i < w * h; i++) this.mdata[i] = px[i * 4] / 255;
     this.mw = w; this.mh = h;
+    this.locate();
   }
 }

@@ -161,7 +161,7 @@ export class Ferrum {
       }
       if (C > 0.6 && st.callout <= 0) {
         overlay.callout('光線砲', 'Repulsor Blast');
-        this.ctx.onMove(0);
+        this.ctx.onMove('repulsor');
         sfx.play('lock');
         st.callout = 3;
         Post.flashScreen(0.08, this.cB);
@@ -180,14 +180,7 @@ export class Ferrum {
       this.launch(h);
     }
 
-    // ---- HUD toggle: hold a fist ----
-    const fistAlone = h.present && h.fist && !(o.present && o.fist && Math.hypot(o.cx - h.cx, o.cy - h.cy) / h.scale < CONFIG.touchDist * 1.5);
-    st.fistT = fistAlone && h.still ? st.fistT + dt : 0;
-    if (st.fistT > 0.55 && this.hud.cool <= 0) {
-      this.hud.cool = 1.2;
-      st.fistT = 0;
-      this.toggleHud();
-    }
+    // (the HUD now comes up with the suit instead of a fist toggle)
     return 0.32 + C * 1.4;
   }
 
@@ -314,7 +307,7 @@ export class Ferrum {
         o.d0 = Math.hypot(L.pinchX - R.pinchX, L.pinchY - R.pinchY);
         overlay.callout('設計図', 'Holo Schematic', { dur: 1.1 });
         sfx.play('holo');
-        this.ctx.onMove(6);
+        this.ctx.onMove('unibeam');
         Post.flashScreen(0.15, this.cB);
         fx.ring({ x: (L.pinchX + R.pinchX) / 2, y: (L.pinchY + R.pinchY) / 2, r0: 10, r1: 300, dur: 0.45, width: 10, a: this.cA, b: this.cB, intensity: 1.8 });
       }
@@ -454,7 +447,7 @@ export class Ferrum {
     Post.punch(2, u.x, u.y);
     Post.shockwave({ x: u.x, y: u.y, speed: 1600, width: 110, strength: 50, life: 0.8 });
     fx.ring({ x: u.x, y: u.y, r0: 20, r1: diag * 0.7, dur: 0.7, width: 30, a: this.cA, b: this.cB, noise: 0.1, intensity: 2 });
-    this.ctx.onMove(5);
+    this.ctx.onMove('holo');
   }
 
   // ---------- Missile Volley ----------
@@ -471,7 +464,7 @@ export class Ferrum {
     Post.shake(0.4);
     Post.aberrate(6);
     Post.flashScreen(0.12, this.cB);
-    this.ctx.onMove(2);
+    this.ctx.onMove('missile');
     this.after(1.1, () => {
       overlay.sfxText('BOOM!', W / 2, H * 0.3, 1.5, [255, 150, 40]);
       Post.impact(0.08, [1, 0.8, 0.5]);
@@ -535,7 +528,7 @@ export class Ferrum {
     Post.aberrate(6);
     Post.glitchFor(0.3);
     overlay.callout('戦術', h.on ? 'HUD Online' : 'HUD Offline');
-    if (h.on) this.ctx.onMove(1);
+    if (h.on) this.ctx.onMove('hud');
     fx.ring({ x: window.innerWidth / 2, y: window.innerHeight / 2, r0: 10, r1: Math.hypot(window.innerWidth, window.innerHeight) * 0.5, dur: 0.5, width: 8, a: this.cA, b: this.cB, intensity: 1.4 });
   }
 
@@ -584,7 +577,7 @@ export class Ferrum {
       t.called = 1;
       overlay.callout('飛行', 'Thrusters');
       sfx.play('repulsor');
-      this.ctx.onMove(3);
+      this.ctx.onMove('thrusters');
       Post.flashScreen(0.2, this.cB);
       Post.shake(0.5);
     }
@@ -674,6 +667,7 @@ export class Ferrum {
     const { overlay, sfx, fx, streaks } = this.ctx;
     const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
     s.hold = 0; s.cool = 2; s.on = true; s.t = 0;
+    if (!this.hud.on) { this.hud.on = true; this.ctx.sfx.play('hud'); }
     this.recolor();
     const cx = W / 2, cy = H * 0.58;
     overlay.callout('装着', 'Suit-Up', { big: true, dur: 1.9 });
@@ -711,7 +705,7 @@ export class Ferrum {
       this.ctx.phys.blast(cx, cy, 900, 2400);
       this.ctx.phys.burst(cx, cy, 26, 'red', { speed: 1400, size: 15, up: 500, kinds: ['red', 'gold', 'steel'] });
     });
-    this.ctx.onMove(4);
+    this.ctx.onMove('suit');
   }
 
   suitDown() {

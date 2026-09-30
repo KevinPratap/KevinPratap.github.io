@@ -169,6 +169,35 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }`,
 
+  // Spiralling chakra sphere: banded swirl wrapped round a white core, with
+  // thin wind rings whipping around the outside. uParam.x = charge (spin
+  // speed), uParam.y = instability (wobble while it grinds).
+  rasengan: QUAD_HEAD + /* glsl */ `
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p);
+  float a = atan(p.y, p.x);
+  float R = 0.34 * (1.0 + uParam.y * 0.06 * sin(uTime * 47.0 + a * 3.0));
+  float body = 1.0 - smoothstep(R * 0.9, R, r);
+  float z = sqrt(max(R * R - r * r, 0.0)) / R;
+  float t = uTime * (9.0 + uParam.x * 16.0);
+  float b1 = pow(0.5 + 0.5 * sin(a * 3.0 + (1.0 - z) * 10.0 - t), 7.0);
+  float b2 = pow(0.5 + 0.5 * sin(a * 5.0 - (1.0 - z) * 15.0 + t * 1.35), 16.0);
+  float n = fbm(vec3(p * 7.0, uTime * 5.0 + uSeed));
+  float core = exp(-r * r / (R * R) * 4.5);
+  float rim = exp(-sq((r - R) / 0.03));
+  float zone = smoothstep(R * 0.98, R * 1.06, r) * (1.0 - smoothstep(R * 1.1, R * 2.3, r));
+  float wind = pow(0.5 + 0.5 * sin(a * 2.0 - t * 1.7 + r * 24.0), 22.0) * zone * (0.5 + n);
+  float wind2 = pow(0.5 + 0.5 * sin(-a * 3.0 - t * 1.2 + r * 17.0 + 1.7), 28.0) * zone * 0.6;
+  vec3 col = uColorA * body * (0.08 + b1 * 0.38 + b2 * 0.3) * (0.65 + 0.35 * n);
+  col += uColorB * rim * 0.55;
+  col += vec3(1.0) * core * (0.25 + uParam.x * 0.3);
+  col += uColorB * (wind + wind2) * 0.45;
+  col += uColorA * exp(-max(r - R, 0.0) * 12.0) * 0.1 * step(R, r);
+  col *= uIntensity * (1.0 - smoothstep(0.88, 1.0, r));
+  gl_FragColor = vec4(col, 1.0);
+}`,
+
   // Crackling ball lightning. uParam.x = charge.
   plasma: QUAD_HEAD + /* glsl */ `
 void main() {

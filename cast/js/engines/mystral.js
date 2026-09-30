@@ -4,6 +4,7 @@
 import { CONFIG, CHARACTERS } from '../config.js';
 import { Post } from '../render/pipeline.js';
 import { FXQuad, Sigil, makeSigilTextures } from '../render/objects.js';
+import { pose } from '../signs.js';
 import { clamp, rand, pick, TAU, damp, lerp, easeOutCubic } from '../util.js';
 
 const CH = CHARACTERS.mystral;
@@ -108,7 +109,7 @@ export class Mystral {
     const levels = [0.32, 0.32];
     const mirrorOn = this.updateMirror(hands, dt, time, levels);
     const clockOn = this.updateTime(hands, dt, time, levels);
-    const singOn = this.updateSing(hands, dt, time);
+    const singOn = false;
     const busy = mirrorOn || clockOn;
     levels[0] = Math.max(levels[0], this.updateHand(this.slots.L, hands.L, dt, time, busy));
     levels[1] = Math.max(levels[1], this.updateHand(this.slots.R, hands.R, dt, time, busy));
@@ -135,14 +136,17 @@ export class Mystral {
     }
 
     // ---- Mandala Shield ----
-    const want = h.present && !busy && h.isOpen && h.still && !h.point && !h.two && !h.pinch && !st.whip.on ? 1 : 0;
+    const sorc = h.present && pose(h) === 'horns';
+    st.sorcT = sorc ? (st.sorcT || 0) + dt : 0;
+    // a shield already up stays while the palm is open or the sign is held
+    const want = h.present && !busy && !st.whip.on && (st.sorcT > 0.15 || (st.k > 0.3 && (h.isOpen || sorc))) ? 1 : 0;
     st.k = damp(st.k, want, want ? 3.2 : 6, dt);
     if (st.k < 0.004) st.k = 0;
     const K = st.k;
     if (K > 0.55 && st.callout <= 0) {
       overlay.callout('護法陣', 'Mandala Shield');
       sfx.play('chime');
-      this.ctx.onMove(0);
+      this.ctx.onMove('shield');
       st.callout = 3.2;
       fx.ring({ x: st.x, y: st.y, r0: st.size, r1: st.size * 4.5, dur: 0.5, width: 12, a: CH.a, b: CH.b, intensity: 2 });
     }
@@ -186,7 +190,7 @@ export class Mystral {
     }
 
     // ---- Crescent Slash ----
-    this.updateSlash(st, h, dt, time);
+    // (crescent slash retired: generic, and it misfired on the mirror sign)
     // ---- Eldritch Whip ----
     this.updateWhip(st, h, dt, time, busy);
     return 0.32 + K * 0.35;
@@ -204,7 +208,7 @@ export class Mystral {
       w.on = true; w.pts = [];
       for (let i = 0; i < N; i++) w.pts.push({ x: h.pinchX, y: h.pinchY + i * SEG * 0.3, px: h.pinchX, py: h.pinchY + i * SEG * 0.3 });
       sfx.play('chime');
-      if (!w.called) { w.called = true; overlay.callout('魔鞭', 'Eldritch Whip'); this.ctx.onMove(5); }
+      if (!w.called) { w.called = true; overlay.callout('魔鞭', 'Eldritch Whip'); this.ctx.onMove('whip'); }
       fx.ring({ x: h.pinchX, y: h.pinchY, r0: 6, r1: h.scale * 1.6, dur: 0.3, width: 6, a: CH.a, b: CH.b, intensity: 1.6 });
     }
     w.k = damp(w.k, want ? 1 : 0, want ? 8 : 5, dt);
@@ -306,7 +310,7 @@ export class Mystral {
     overlay.callout('転移門', 'Portal Ring', { big: true, dur: 1.5 });
     sfx.play('portal');
     sfx.play('chime');
-    this.ctx.onMove(1);
+    this.ctx.onMove('portal');
   }
 
   updatePortal(dt, time) {
@@ -503,7 +507,7 @@ export class Mystral {
     fx.ring({ x: s.x, y: s.y, r0: 20, r1: Math.hypot(window.innerWidth, window.innerHeight) * 0.7, dur: 0.7, width: 30, a: CH.a, b: CH.b, noise: 0.1, intensity: 2 });
     // the room's loose junk lifts off the floor
     for (let i = 0; i < 14; i++) phys.shard(rand(60, window.innerWidth - 60), window.innerHeight * 0.98, rand(-100, 100), -rand(700, 1600), pick(['rock', 'glass', 'rock']), rand(10, 24), { life: 9 });
-    this.ctx.onMove(6);
+    this.ctx.onMove('singularity');
   }
 
   endSing(silent) {
@@ -634,7 +638,7 @@ export class Mystral {
     overlay.callout('月光斬', 'Crescent Slash', { big: true, dur: 1.2 });
     sfx.play('tear');
     sfx.play('chime');
-    this.ctx.onMove(3);
+    this.ctx.onMove('crescent');
   }
 
   // ---------- Mirror Dimension ----------
@@ -650,7 +654,7 @@ export class Mystral {
       m.on = true;
       overlay.callout('鏡像界', 'Mirror Dimension', { big: true, dur: 1.8 });
       sfx.play('mirror');
-      this.ctx.onMove(2);
+      this.ctx.onMove('mirror');
       Post.flashScreen(0.5, CH.b);
       Post.impact(0.1, CH.b);
       Post.freeze(0.08);
@@ -722,7 +726,7 @@ export class Mystral {
         t.phase = 'rewind'; t.t = 0;
         overlay.callout('時廻', 'Time Loop', { big: true, dur: 2.0 });
         sfx.play('rewind');
-        this.ctx.onMove(4);
+        this.ctx.onMove('time');
         Post.freeze(0.06);
         Post.flashScreen(0.3, CH.b);
       }

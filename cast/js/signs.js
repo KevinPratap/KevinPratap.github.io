@@ -27,12 +27,16 @@ export function twoish(h) {
 export function pose(h) {
   if (!h.present) return null;
   const E = h.ext;
+  // crossed fingers: the middle finger bends over the index, so it reads a
+  // little short; accept that before the stricter V / point checks
+  if (E[0] > 0.5 && E[1] > 0.42 && Math.max(E[2], E[3]) < 0.45 && (h.crossed || h.gap < 0.26)) return 'together';
   if (h.point) return 'point';
   if (h.two) return h.crossed || h.gap < 0.28 ? 'together' : 'V';
   // index + pinky up, middle + ring folded: the sorcerer / web-shooter sign
   if (E[0] > UP && E[3] > UP && E[1] < DOWN && E[2] < DOWN) return 'horns';
-  if (h.pinch) return 'pinch';
+  // a tight fist can bring the thumb tip near the index tip; it's a fist
   if (h.fist) return 'fist';
+  if (h.pinch) return 'pinch';
   if (h.isOpen) return 'open';
   if (h.cupped) return 'claw';
   return null;
@@ -57,7 +61,12 @@ export class Seals {
       const sc = (L.scale + R.scale) / 2;
       const dx = R.cx - L.cx, dy = R.cy - L.cy;
       const d = Math.hypot(dx, dy) / sc;
-      if (twoish(L) && twoish(R) && d < 2.8) {
+      // one hand's fingers are often hidden behind the other's in the cross:
+      // one clear two-finger hand pressed against the other still counts
+      const halfSeen = (twoish(L) || twoish(R)) && d < 1.7 && !L.isOpen && !R.isOpen && !(L.point && R.point);
+      if (!(twoish(L) && twoish(R)) && halfSeen) {
+        out = { sign: 'clone', x: (L.cx + R.cx) / 2, y: (L.cy + R.cy) / 2, sc };
+      } else if (twoish(L) && twoish(R) && d < 2.8) {
         const c = Math.abs(L.pdx * R.pdx + L.pdy * R.pdy);
         const up = L.pdy < -0.45 && R.pdy < -0.45;
         out = { sign: c > 0.8 && up ? 'tiger' : c < 0.72 ? 'clone' : (up ? 'tiger' : 'clone'), x: (L.cx + R.cx) / 2, y: (L.cy + R.cy) / 2, sc };
@@ -69,7 +78,7 @@ export class Seals {
           const w = B.pts[0];
           const dw = Math.hypot(A.cx - w.x, A.cy - w.y) / sc;
           const dc = Math.hypot(A.cx - B.cx, A.cy - B.cy) / sc;
-          if (dw < 1.05 && dc > dw * 1.45 && dc > 1.1 && !A.point && !A.two) {
+          if (dw < 0.5 && dw < dc * 0.6 && dc > 0.45 && !A.point && !A.two) {
             out = { sign: 'grab', holder: A, held: B, x: B.cx, y: B.cy, sc };
             break;
           }

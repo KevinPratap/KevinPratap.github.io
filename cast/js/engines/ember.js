@@ -66,8 +66,13 @@ export class Ember {
     const levels = [0.3, 0.3];
     levels[0] = this.updateHand(this.slots.L, hands.L, dt, time);
     levels[1] = this.updateHand(this.slots.R, hands.R, dt, time);
-    this.updateNova(hands, dt, time);
-    this.updateWall(hands, dt, time, levels);
+    // alchemist's snap and fire fist replace the old nova / wall
+    for (const h of [hands.L, hands.R]) {
+      if (!h.present) continue;
+      if (h.snap && (this.snapCool || 0) <= 0) { this.snapFlame(h); this.snapCool = 0.5; }
+      if (h.fist && h.thrust && (this.fistCool || 0) <= 0) { this.fireFist(h); this.fistCool = 0.8; }
+    }
+    this.snapCool = (this.snapCool || 0) - dt; this.fistCool = (this.fistCool || 0) - dt;
     this.updateTornado(hands, dt, time, levels);
     this.updateProjectiles(dt, time);
     this.ambient(dt);
@@ -143,13 +148,13 @@ export class Ember {
       }
 
       // Flame Whip: fast-moving fist leaves a burning ribbon; snaps at the end.
-      const whipOn = h.fist && h.speed > CONFIG.swipeSpeed * (st.whip ? 0.6 : 1);
+      const whipOn = false; // flame whip retired: it fired every time you moved a fist
       if (whipOn) {
         if (!st.whip) {
           st.whip = true;
           st.whipT = 0;
           if (st.whipCool <= 0) { sfx.play('whip'); st.whipCool = 0.25; }
-          if (st.calloutCool <= 0) { overlay.callout('炎鞭', 'Flame Whip'); this.ctx.onMove(1); st.calloutCool = 2.5; }
+          if (st.calloutCool <= 0) { overlay.callout('炎鞭', 'Flame Whip'); this.ctx.onMove('whip'); st.calloutCool = 2.5; }
         }
         st.whipT += dt;
         st.trail.width = h.scale * 1.2;
@@ -233,7 +238,7 @@ export class Ember {
     const ang = Math.atan2(h.pdy, h.pdx);
     if (want && st.jetCallout <= 0) {
       overlay.callout('火龍', 'Dragon Fire');
-      this.ctx.onMove(4);
+      this.ctx.onMove('dragon');
       sfx.play('whoomp');
       st.jetCallout = 3;
     }
@@ -280,7 +285,7 @@ export class Ember {
     const { fx, sfx, overlay, scene } = this.ctx;
     sfx.play('throw');
     overlay.callout('火球', 'Palm Orb');
-    this.ctx.onMove(0);
+    this.ctx.onMove('orb');
     Post.shake(0.22);
     Post.bloom(0.8);
     const size = st.size * (0.8 + st.charge * 0.6);
@@ -405,7 +410,49 @@ export class Ember {
     }
   }
 
-  novaBurst(x, y, power) {
+  // Flame alchemy: snap your fingers and the air where you point ignites.
+  snapFlame(h) {
+    const { sfx, overlay } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
+    const x0 = h.pts[12].x, y0 = h.pts[12].y;
+    let dx = h.pdx, dy = h.pdy;
+    const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
+    const tx = clamp(x0 + dx * diag * 0.36, 50, W - 50), ty = clamp(y0 + dy * diag * 0.36, 50, H - 50);
+    sfx.play('snap');
+    // a spark races through the air to the target, then it all goes up
+    for (let i = 0; i < 16; i++) {
+      const t = i / 16;
+      this.spark(lerp(x0, tx, t), lerp(y0, ty, t), Math.atan2(ty - y0, tx - x0), rand(200, 600), { life: 0.12 + t * 0.12, width: 2 });
+    }
+    overlay.sfxText('SNAP', x0, y0 - h.scale * 1.2, 0.6, [255, 235, 200]);
+    setTimeout(() => this.novaBurst(tx, ty, 0.95, 'snap'), 150);
+  }
+
+  // Fire Fist: punch at the camera and a column of flame erupts from it.
+  fireFist(h) {
+    const { sfx, overlay, fx } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H), base = Math.min(W, H);
+    const x = h.cx, y = h.cy, p = this.ctx.voice.power;
+    Post.punch(2.2 * p, x, y); Post.shake(0.7); Post.freeze(0.08); Post.impact(0.1, [1, 0.8, 0.5]); Post.aberrate(12);
+    Post.flashScreen(0.35, [1, 0.6, 0.25]);
+    Post.shockwave({ x, y, speed: 1600, width: 120, strength: 42 * p, life: 0.9 });
+    fx.glow({ x, y, s0: base * 0.2, s1: diag * 0.8, dur: 0.7, a: [1, 0.4, 0.1], b: [1, 0.9, 0.6], intensity: 3.2 });
+    fx.ring({ x, y, r0: h.scale, r1: diag * 0.6, dur: 0.7, width: 70, fire: true, noise: 0.3, intensity: 2 });
+    // flames pour out of the fist toward the lens: fast, swelling, everywhere
+    for (let i = 0; i < 160; i++) {
+      const a = rand(0, TAU), v = rand(300, 1800) * p;
+      this.ember(x, y, { vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.8 - 100, size: rand(18, 44), life: rand(0.5, 1.1) });
+    }
+    for (let i = 0; i < 90; i++) this.spark(x, y, rand(0, TAU), rand(700, 2400), { life: rand(0.3, 0.7), width: rand(2, 4) });
+    this.ctx.phys.blast(x, y, diag * 0.8, 3600 * p);
+    this.ctx.phys.burst(x, y, 12, 'wood', { speed: 1500, size: 12, hot: 2 });
+    overlay.callout('火拳', 'Fire Fist', { big: true, dur: 1.3 });
+    overlay.sfxText('HIKEN!', x, y - base * 0.12, 1.4, [255, 180, 80]);
+    sfx.play('nova');
+    this.ctx.onMove('fist');
+  }
+
+  novaBurst(x, y, power, kind = 'nova') {
     const { fx, sfx, overlay } = this.ctx;
     power *= this.ctx.voice.power;
     const W = window.innerWidth, H = window.innerHeight;
@@ -426,12 +473,12 @@ export class Ember {
       const a = rand(0, TAU), v = rand(150, 700);
       this.ember(x, y, { vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: rand(8, 16), life: rand(0.6, 1.3) });
     }
-    overlay.callout('爆炎', 'Nova Burst', { big: true });
+    overlay.callout(kind === 'snap' ? '焔' : '爆炎', kind === 'snap' ? 'Flame Alchemy' : 'Nova Burst', { big: true });
     overlay.crack(x, y, 1.4);
     Post.freeze(0.1);
     this.lines = { t: 0.5, x, y };
     sfx.play('nova');
-    this.ctx.onMove(2);
+    this.ctx.onMove(kind);
   }
 
   // ---------- Wall of Flame ----------
@@ -457,7 +504,7 @@ export class Ember {
       w.on = true;
       sfx.play('whoomp');
       overlay.callout('炎壁', 'Wall of Flame');
-      this.ctx.onMove(3);
+      this.ctx.onMove('wall');
       Post.shake(0.35);
       fx.glow({ x: w.x, y: w.y, s0: w.w * 0.3, s1: w.w * 1.2, dur: 0.4, intensity: 2 });
     }
@@ -501,7 +548,7 @@ export class Ember {
     if (h && !T.on && T.cool <= 0) {
       T.on = true; T.x = h.cx; T.heat = Post.source('heat');
       overlay.callout('火災旋風', 'Fire Tornado', { big: true });
-      this.ctx.onMove(5);
+      this.ctx.onMove('tornado');
       sfx.play('boom', 1.2);
       Post.impact(0.1, [1, 0.8, 0.5]); Post.flashScreen(0.5, [1, 0.7, 0.3]); Post.shake(0.8); Post.bloom(2);
       Post.shockwave({ x: h.cx, y: H * 0.95, speed: 1200, width: 80, strength: 30, life: 0.7 });

@@ -42,6 +42,8 @@ uniform float uFlare;
 uniform vec3 uFlareCol;
 uniform float uGlitch;
 uniform float uGhost;
+uniform float uVoid;
+uniform vec2 uVoidC;
 uniform float uGhostOff;
 uniform float uEdge;
 uniform vec3 uEdgeCol;
@@ -63,6 +65,17 @@ float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
   return fract((p3.x + p3.y) * p3.z);
+}
+float vn2(vec2 x) {
+  vec2 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x), mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float vfbm(vec3 p) {
+  vec2 q = p.xy + p.z * vec2(0.7, -0.4);
+  float a = 0.5, s = 0.0;
+  for (int i = 0; i < 4; i++) { s += a * vn2(q); q = q * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+  return s;
 }
 
 void main() {
@@ -245,6 +258,38 @@ void main() {
     wc = wc * 0.8 + star * 0.9;
     g = mix(g, wc, winI);
   }
+  if (uVoid > 0.0) {
+    // Domain expansion: everything that isn't you becomes an endless void.
+    // Stars at three depths, a violet nebula, and a vast bright ring hung
+    // behind you, all slowly turning. Without a body mask it opens as a
+    // window around the edges instead.
+    float m = uHasMask > 0.5 ? smoothstep(0.35, 0.65, texture2D(tMask, vidUv(p)).r) : 1.0 - smoothstep(0.25, 0.5, length((px - uRes * 0.5) / uRes.y));
+    vec2 c = px - uVoidC;
+    float ang = uTime * 0.03;
+    vec2 q = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * c;
+    float rr = length(c) / uRes.y;
+    vec3 sky = vec3(0.004, 0.003, 0.012);
+    float neb = vfbm(vec3(q * 0.0025, uTime * 0.05));
+    float neb2 = vfbm(vec3(q * 0.006 + 4.0, uTime * 0.08));
+    sky += vec3(0.16, 0.05, 0.32) * pow(neb, 3.0) * 1.6 + vec3(0.02, 0.1, 0.25) * pow(neb2, 4.0) * 1.5;
+    for (int i = 0; i < 3; i++) {
+      float fi = float(i);
+      float sc = 14.0 + fi * 22.0;
+      vec2 sp = q / uRes.y * sc + fi * 17.3;
+      vec2 cell = floor(sp);
+      float h = hash12(cell + fi * 3.1);
+      vec2 f = fract(sp) - 0.5 - (vec2(hash12(cell + 1.7), hash12(cell + 9.2)) - 0.5) * 0.7;
+      float tw = 0.6 + 0.4 * sin(uTime * (2.0 + h * 5.0) + h * 40.0);
+      sky += vec3(0.85, 0.9, 1.0) * step(0.9 - fi * 0.03, h) * exp(-dot(f, f) * (160.0 + fi * 90.0)) * tw * (1.3 - fi * 0.3);
+    }
+    // the great ring: a thin blinding halo with a softer glow
+    float ring = exp(-pow((rr - 0.46) / 0.012, 2.0)) * 1.4 + exp(-pow((rr - 0.46) / 0.09, 2.0)) * 0.22;
+    sky += vec3(0.75, 0.82, 1.0) * ring * (0.85 + 0.15 * sin(atan(c.y, c.x) * 6.0 + uTime));
+    sky += vec3(0.5, 0.3, 1.0) * exp(-rr * 4.0) * 0.12;
+    g = mix(g, sky, uVoid * (1.0 - m));
+    // you glow a little at the edges, standing in it
+    g += vec3(0.6, 0.7, 1.0) * uVoid * m * (1.0 - m) * 1.5;
+  }
   vec3 col = g + fx * (1.0 - horizon) + uRimCol * (rim + portal) + uRimCol * tear;
 
   if (uAura > 0.0) {
@@ -335,6 +380,9 @@ export const Post = {
   persistent: [],
   aura: 0, auraTarget: 0, auraA: [1, 0.7, 0.2], auraB: [1, 0.95, 0.7],
   clones: [0, 1, 2, 3].map(() => ({ dx: 0, dy: 0, a: 0, ta: 0, s: 1 })), clAnchor: 0, clCol: [0.3, 1, 0.75], maskReady: false,
+  void: 0, voidTarget: 0, voidC: { x: 0, y: 0 },
+  // Domain expansion background; strongest request wins each frame.
+  wantVoid(x, cx, cy) { if (x > this.voidTarget) { this.voidTarget = x; this.voidC.x = cx; this.voidC.y = cy; } },
   kal: 0, kalTarget: 0, kalSeg: 6, kalRot: 0,
   freezeT: 0, glitch: 0, ghost: 0, ghostOff: 0, ghostVel: 0, edge: 0, edgeTarget: 0, edgeCol: [1, 0.8, 0.2], flare: 0.5, flareCol: [1, 1, 1],
 
@@ -446,6 +494,8 @@ export class Pipeline {
       uFlareCol: { value: new THREE.Color(1, 1, 1) },
       uGlitch: { value: 0 },
       uGhost: { value: 0 },
+      uVoid: { value: 0 },
+      uVoidC: { value: new THREE.Vector2(w / 2, h * 0.4) },
       uGhostOff: { value: 0 },
       uEdge: { value: 0 },
       uEdgeCol: { value: new THREE.Color(1, 0.8, 0.2) },
@@ -584,6 +634,10 @@ export class Pipeline {
     u.uAuraA.value.setRGB(...P.auraA);
     u.uAuraB.value.setRGB(...P.auraB);
     u.uGhost.value = P.ghost;
+    P.void += (P.voidTarget - P.void) * (1 - Math.exp(-dt * (P.voidTarget > P.void ? 3 : 2)));
+    P.voidTarget = 0;
+    u.uVoid.value = P.void;
+    u.uVoidC.value.set(P.voidC.x, P.voidC.y);
     u.uGhostOff.value = P.ghostOff;
     u.uEdge.value = P.edge;
     u.uEdgeCol.value.setRGB(...P.edgeCol);

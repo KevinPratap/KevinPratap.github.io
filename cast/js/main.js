@@ -15,15 +15,17 @@ import { Kai } from './engines/kai.js';
 import { Kage } from './engines/kage.js';
 import { Mystral } from './engines/mystral.js';
 import { Ferrum } from './engines/ferrum.js';
+import { Force } from './engines/force.js';
 import { selectBackground } from './select-bg.js';
 import { Body } from './body.js';
 import { Physics } from './physics.js';
 import { Voice } from './voice.js';
+import { pose } from './signs.js';
 import { Replay } from './replay.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const ORDER = ['ember', 'nyx', 'raiju', 'kai', 'kage', 'mystral', 'ferrum'];
+const ORDER = ['force', 'kage', 'nyx', 'kai', 'ferrum', 'mystral', 'ember', 'raiju'];
 
 const screens = ['select', 'loading', 'error', 'live'];
 function show(name) {
@@ -47,6 +49,34 @@ let pipeline, particles, streaks, lines, fx, energy, overlay, recorder, engines,
 let lastImpact = 0;
 
 // ---------- select screen ----------
+// Cards are built from the character config so they always match the moves.
+(function buildCards() {
+  const grid = document.querySelector('.char-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (const key of ORDER) {
+    const ch = CHARACTERS[key];
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'char-card'; b.dataset.char = key; b.setAttribute('aria-pressed', 'false');
+    b.innerHTML = `<span class="card-kanji" lang="ja" aria-hidden="true"></span><span class="char-name"></span><span class="char-sub"></span><ul class="char-moves"></ul>`;
+    b.querySelector('.card-kanji').textContent = ch.kanji;
+    b.querySelector('.char-name').textContent = ch.name;
+    b.querySelector('.char-sub').textContent = ch.tag || ch.element;
+    const ul = b.querySelector('.char-moves');
+    for (const m of ch.moves) {
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="mk" lang="ja"></span><span><b></b> </span>';
+      li.querySelector('.mk').textContent = m.kanji;
+      li.querySelector('b').textContent = `${m.name}.`;
+      li.lastChild.append(m.how.split(/(?<=\.)\s/)[0]);
+      ul.appendChild(li);
+    }
+    b.style.setProperty('--c1', ch.css[0]);
+    b.style.setProperty('--c2', ch.css[1]);
+    b.style.animationDelay = `${0.3 + grid.children.length * 0.08}s`;
+    grid.appendChild(b);
+  }
+})();
 document.querySelectorAll('.char-card').forEach((card) => {
   card.addEventListener('click', () => selectChar(card.dataset.char));
 });
@@ -200,7 +230,7 @@ function initGraphics() {
   phys = new Physics(overlay, body);
   overlay.phys = phys;
   const ctx = { scene, fx, particles, streaks, lines, overlay, sfx, voice, energy, phys, onMove: markMove };
-  engines = { ember: new Ember(ctx), nyx: new Nyx(ctx), raiju: new Raiju(ctx), kai: new Kai(ctx), kage: new Kage(ctx), mystral: new Mystral(ctx), ferrum: new Ferrum(ctx) };
+  engines = { force: new Force(ctx), ember: new Ember(ctx), nyx: new Nyx(ctx), raiju: new Raiju(ctx), kai: new Kai(ctx), kage: new Kage(ctx), mystral: new Mystral(ctx), ferrum: new Ferrum(ctx) };
   state.pr = pipeline.pr;
   state.booted = true;
   window.addEventListener('resize', onResize);
@@ -276,6 +306,8 @@ function buildMoves(ch, name) {
 }
 
 function markMove(i) {
+  // engines report either a move index or a move id
+  if (typeof i === 'string') i = CHARACTERS[state.char].moves.findIndex((m) => m.id === i);
   // Chain moves inside the window to build a combo.
   state.combo = state.clock - state.lastMove < CONFIG.comboWindow ? state.combo + 1 : 1;
   replay.mark(0.5);
@@ -372,10 +404,11 @@ function frame(now) {
 
 function drawDebug(H) {
   const f = (h) => (h.present
-    ? `open ${h.open.toFixed(2)} spd ${h.speed.toFixed(1)} grow ${h.scaleRate.toFixed(1)}  ${[h.fist && 'fist', h.cupped && 'cup', h.isOpen && 'open', h.still && 'still'].filter(Boolean).join(' ')}`
+    ? `${(pose(h) || '·').toUpperCase().padEnd(9)} fingers ${h.ext.map((e) => e.toFixed(1)).join(' ')} thumb ${h.thumb.toFixed(1)} spd ${h.speed.toFixed(1)} grow ${h.scaleRate.toFixed(1)}${h.still ? ' still' : ''}`
     : '—');
   $('debug-readout').textContent =
-    `fps ${state.fps.toFixed(0)}  res ${pipeline.pr.toFixed(2)}x  ${state.useSim ? 'demo' : 'camera'}\nL  ${f(H.L)}\nR  ${f(H.R)}`;
+    `fps ${state.fps.toFixed(0)}  res ${pipeline.pr.toFixed(2)}x  ${state.useSim ? 'demo' : 'camera'}\nL  ${f(H.L)}\nR  ${f(H.R)}`
+    + (state.engine && state.engine.seals && state.engine.seals.info ? `\nSEAL  ${state.engine.seals.info.sign.toUpperCase()}` : '');
 }
 
 // ---------- HUD ----------

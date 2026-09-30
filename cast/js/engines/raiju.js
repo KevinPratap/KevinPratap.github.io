@@ -269,7 +269,7 @@ export class Raiju {
     sfx.play('zap', 1.6);
     sfx.play('throw');
     overlay.callout('雷掌', 'Thunder Palm');
-    this.ctx.onMove(0);
+    this.ctx.onMove('palm');
     Post.shake(0.25);
     const size = st.size * (1 + st.charge * 0.8);
     const ball = new FXQuad(scene, 'plasma', { a: CH.a, b: CH.b, intensity: 1.4 });
@@ -383,7 +383,7 @@ export class Raiju {
     }
     overlay.callout('電磁砲', 'Railgun', { big: true, dur: 1.2 });
     sfx.play('rail');
-    this.ctx.onMove(1);
+    this.ctx.onMove('rail');
   }
 
   updateBeams(dt, time) {
@@ -450,7 +450,7 @@ export class Raiju {
     overlay.callout('落雷', 'Thunderstrike', { big: true });
     overlay.crack(x, y, 1.4);
     sfx.play('thunder', 1.6);
-    this.ctx.onMove(3);
+    this.ctx.onMove('strike');
   }
 
   // ---------- Shazam Bolt ----------
@@ -485,7 +485,7 @@ export class Raiju {
     overlay.callout('神雷', 'Shazam Bolt', { big: true });
     overlay.crack(x, y, 1.5);
     sfx.play('thunder', 1.8);
-    this.ctx.onMove(4);
+    this.ctx.onMove('bolt');
   }
 
   shootBolt(h) {
@@ -533,7 +533,7 @@ export class Raiju {
     Post.glitchFor(0.3);
     overlay.callout('天雷', 'Sky Storm', { big: true, dur: 1.5 });
     sfx.play('thunder', 1.8);
-    this.ctx.onMove(5);
+    this.ctx.onMove('storm');
     const n = 11;
     for (let i = 0; i < n; i++) {
       this.after(i * 0.1, () => {
@@ -594,7 +594,7 @@ export class Raiju {
       k.on = true;
       if (k.calloutCool <= 0) {
         overlay.callout('雷鎖', 'Arc Link');
-        this.ctx.onMove(2);
+        this.ctx.onMove('link');
         k.calloutCool = 3;
       }
       sfx.play('zap', 1.5);
@@ -621,7 +621,7 @@ export class Raiju {
     if (this.charged > 0 && lv > 0.3) {
       if (this.conduitCool <= 0) {
         overlay.callout('雷導', 'Conduit');
-        this.ctx.onMove(6);
+        this.ctx.onMove('conduit');
         this.conduitCool = 4;
         Post.flashScreen(0.4, HOT);
         sfx.play('zap', 1.8);
@@ -705,6 +705,6 @@ export class Raiju {
     overlay.callout('過負荷', 'Overload', { big: true });
     overlay.crack(x, y, 1.5);
     sfx.play('overload');
-    this.ctx.onMove(2);
+    this.ctx.onMove('link');
   }
 }

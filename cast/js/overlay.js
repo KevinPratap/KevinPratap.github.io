@@ -23,6 +23,41 @@ export class Overlay {
     this.hudData = null; this.hudShow = 0; this.hudT = 0;
     this.hasLetterSpacing = 'letterSpacing' in this.g;
     this.puffs = []; this.knives = []; this.inkData = null; this.slashes = []; this.clockData = null; this.blasts = []; this.missileData = null; this.plates = []; this.shuData = null; this.wind = []; this.phys = null; this.logData = null; this.holoData = null; this.holoModel = null; this.holeData = null;
+    // engines paint their own solid 2D pieces (a saber hilt, drones) here
+    this.painters = new Set();
+    this.chips = [];
+  }
+
+  // Small live label under a hand: which sign it's reading, and a ring that
+  // fills while the sign is held. Call every frame.
+  chip(x, y, text, p = 0, col) { this.chips.push({ x, y, text, p, col }); }
+
+  drawChips() {
+    const g = this.g, base = Math.min(this.w, this.h);
+    const ch = this.ch, A = ch ? ch.a : [1, 1, 1], B = ch ? ch.b : [1, 1, 1];
+    g.save();
+    g.font = `600 ${Math.max(11, base * 0.019)}px "JetBrains Mono", ui-monospace, monospace`;
+    g.textAlign = 'left'; g.textBaseline = 'middle';
+    for (const c of this.chips) {
+      const col = c.col || B;
+      const tw = g.measureText(c.text).width, h = base * 0.036, r = h * 0.36;
+      const x = c.x - (tw + h * 1.25) / 2, y = c.y;
+      g.fillStyle = 'rgba(8,10,16,0.62)';
+      g.beginPath();
+      g.roundRect ? g.roundRect(x, y - h / 2, tw + h * 1.25, h, h / 2) : g.rect(x, y - h / 2, tw + h * 1.25, h);
+      g.fill();
+      const cx = x + h * 0.5;
+      g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 2;
+      g.beginPath(); g.arc(cx, y, r, 0, TAU); g.stroke();
+      if (c.p > 0) {
+        g.strokeStyle = rgbToCss(c.p >= 1 ? B : A, 1); g.lineWidth = 3;
+        g.beginPath(); g.arc(cx, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, c.p)); g.stroke();
+      }
+      g.fillStyle = c.p >= 1 ? rgbToCss(col, 1) : 'rgba(255,255,255,0.9)';
+      g.fillText(c.text, cx + r + h * 0.22, y + 1);
+    }
+    g.restore();
+    this.chips.length = 0;
   }
 
   resize(pr) {
@@ -185,6 +220,7 @@ export class Overlay {
     this.inkData = null; this.clockData = null; this.missileData = null; this.plates.length = 0; this.shuData = null;
     this.speed = this.speedTarget = 0;
     this.bars = this.barsTarget = 0;
+    this.chips.length = 0;
   }
 
   draw(dt) {
@@ -220,6 +256,7 @@ export class Overlay {
     if (this.logData) this.drawLog(this.logData);
     this.logData = null;
     if (this.phys) this.phys.draw(g);
+    for (const fn of this.painters) fn(g, dt);
     this.drawPlates(dt);
     if (this.shuData) this.drawShuriken(this.shuData);
     this.shuData = null;
@@ -261,6 +298,7 @@ export class Overlay {
     this.signShow += ((this.signData ? 1 : 0) - this.signShow) * (1 - Math.exp(-dt * 8));
     if (this.signData) this.drawSigns(this.signData, dt);
     this.signData = null;
+    if (this.chips.length) this.drawChips();
     this.voiceShow += ((this.voiceOn ? 1 : 0) - this.voiceShow) * (1 - Math.exp(-dt * 6));
     if (this.voiceShow > 0.02) this.drawVoice();
     this.comboT += dt;

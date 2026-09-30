@@ -137,7 +137,14 @@ export class Kai {
     const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
     D.cool -= dt;
     D.spin += dt * (D.ph === 2 ? 40 : 14 + D.k * 20);
-    const h = [hands.L, hands.R].find((q) => q.present && q.point);
+    // Krillin's sign: one open palm raised straight up, above your head
+    const I = phys.body?.info;
+    const headY = I && I.ok ? I.top + H * 0.05 : H * 0.34;
+    const raised = (q) => q.present && q.open > 0.55 && q.uy < -0.55 && q.cy < headY;
+    const up = [hands.L, hands.R].filter(raised);
+    const h = up.length === 1 ? up[0] : null;
+    D.hold = h && h.still ? (D.hold || 0) + dt : 0;
+    if (h && D.ph === 0 && D.cool <= 0) overlay.chip(h.cx, h.cy + h.scale * 1.8, 'DESTRUCTO DISC', clamp(D.hold / 0.35, 0, 1));
     const drawDisc = (x, y, R, ang, k) => {
       const N = 22, tilt = 0.28;
       for (const [rr, w, ii] of [[1, 3.2, 2.4 * k], [0.72, 2, 1.6 * k]]) {
@@ -153,12 +160,13 @@ export class Kai {
       fx.glow({ x, y, s0: R * 0.8, s1: R * 1.5, dur: 0.09, a: CH.a, b: CH.b, intensity: 1.6 * k });
     };
     if (D.ph === 0) {
-      if (h && D.cool <= 0 && h.pointTime > 0.35 && !this.wave.level) D.ph = 1;
+      if (h && D.cool <= 0 && D.hold > 0.35 && !this.wave.level) { D.ph = 1; D.hand = h; }
     }
     if (D.ph === 1) {
-      if (!h) { D.ph = 0; D.k = 0; return; }
+      const h = D.hand;
+      if (!h || !h.present) { D.ph = 0; D.k = 0; return; }
       D.k = Math.min(1, D.k + dt / 0.8);
-      D.x = h.tipX; D.y = h.tipY - h.scale * 1.1;
+      if (h.uy < -0.3) { D.x = h.pts[12].x; D.y = h.pts[12].y - h.scale * 0.9; }
       const R = h.scale * (0.7 + D.k * 1.5);
       drawDisc(D.x, D.y, R, -0.15 + Math.sin(time * 2) * 0.05, D.k);
       if (D.k < 1 && Math.random() < 0.6) this.spark(D.x + rand(-R, R) * 1.6, D.y + rand(-R, R) * 1.6, 0, 0, { life: 0.15 });
@@ -221,7 +229,10 @@ export class Kai {
       st.cool = 0.12;
     }
 
-    if (!busy && h.two && h.twoTime > 0.35 && h.still && st.stepCool <= 0) {
+    // two fingers to the forehead: Instant Transmission
+    const I = this.ctx.phys.body?.info;
+    const nearHead = !I || !I.ok || Math.hypot(h.tipX - I.hx, h.tipY - I.hy) < h.scale * 2.4;
+    if (!busy && h.two && nearHead && h.twoTime > 0.3 && h.still && st.stepCool <= 0) {
       this.instantStep(h);
       st.stepCool = 1.4;
     }
@@ -343,7 +354,7 @@ export class Kai {
       });
     }
     this.after(0.14, () => { Post.glitchFor(0.5); Post.flashScreen(0.15, [1, 1, 1]); });
-    overlay.callout('瞬歩', 'Instant Step');
+    overlay.callout('瞬間移動', 'Instant Transmission');
     sfx.play('step');
     this.ctx.onMove(4);
   }

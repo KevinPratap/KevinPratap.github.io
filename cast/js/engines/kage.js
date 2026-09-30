@@ -1,203 +1,475 @@
-// Kage: a shadow ninja. Nothing fires from a single pose. You chain hand
-// signs (fist, two fingers, point, open palm, clap) and the last sign
-// unleashes the jutsu that chain spells. Longer chains hit harder.
-import { CONFIG, CHARACTERS } from '../config.js';
+// Kage: a ninja whose jutsu come from the real seals.
+//  - Shadow Clone: the cross seal (two fingers up on each hand, crossed).
+//    Copies of you burst out of smoke beside you and mirror everything,
+//    including your jutsu.
+//  - Rasengan: hold one hand over the other. A spiralling sphere forms
+//    between your palms; thrust or swing that hand to drive it.
+//  - Chidori: grab your own wrist. Lightning screams in that hand; lunge
+//    with it to pierce the screen.
+//  - Fire Style, Great Fireball: the tiger seal (both hands, index and
+//    middle fingers up together). You breathe out a fireball that swallows
+//    the room.
+import { CHARACTERS } from '../config.js';
 import { Post } from '../render/pipeline.js';
-import { FXQuad, Trail } from '../render/objects.js';
-import { clamp, rand, pick, TAU, damp, lerp, easeOutCubic, easeInCubic } from '../util.js';
+import { FXQuad, bolt } from '../render/objects.js';
+import { Seals, Hold } from '../signs.js';
+import { clamp, rand, pick, TAU, damp, lerp, easeOutCubic } from '../util.js';
 
 const CH = CHARACTERS.kage;
-const JADE = [[0.15, 0.95, 0.6], [0.4, 1, 0.75], [0.8, 1, 0.92], [0.08, 0.72, 0.5]];
-const SMOKE = [0.85, 1, 0.94];
+const CHAKRA = [0.2, 0.62, 1.0], CHAKRA_B = [0.82, 0.95, 1.0];
+const VOLT = [[0.7, 0.85, 1], [0.9, 0.96, 1], [0.5, 0.72, 1]];
+const MOVE = { clones: 0, rasengan: 1, chidori: 2, fireball: 3 };
+const CLONE_S = [0.9, 0.9, 0.7, 0.7];
+const SEAL_NAME = { clone: 'CLONE SEAL', tiger: 'TIGER SEAL', stack: 'RASENGAN', grab: 'CHIDORI', clap: '' };
 
-const SIGNS = {
-  fist: { k: '子', w: 'FIST' },
-  two: { k: '寅', w: 'TWO FINGERS' },
-  point: { k: '午', w: 'POINT' },
-  open: { k: '辰', w: 'OPEN PALM' },
-  clap: { k: '合', w: 'CLAP' },
-  cross: { k: '十', w: 'CLONE SIGN' },
-};
-
-// Longest first. No recipe is the ending of another, so a chain never
-// fires the wrong jutsu halfway through a longer one.
-const RECIPES = [
-  { move: 4, seq: ['fist', 'two', 'point', 'open', 'clap'], fn: 'eclipse' },
-  { move: 3, seq: ['fist', 'point', 'two', 'clap'], fn: 'bind' },
-  { move: 0, seq: ['two', 'fist', 'clap'], fn: 'clones' },
-  { move: 1, seq: ['open', 'fist', 'point'], fn: 'smoke' },
-  { move: 2, seq: ['point', 'two', 'open'], fn: 'kunai' },
-  { move: 6, seq: ['clap', 'fist'], fn: 'substitute' },
-];
-
-const HOLD = 0.2;       // seconds a sign must be held to count
-const CHAIN_GAP = 2.6;  // seconds before a half-made chain is forgotten
-// Formation: two clones close beside you, two further back. Offsets are
-// fractions of screen width; scale shrinks them toward the floor.
-const CLONE_X = [-0.27, 0.27, -0.44, 0.44];
-const CLONE_S = [0.8, 0.8, 0.62, 0.62];
-
-const oneHand = (h) => (h.two ? 'two' : h.point ? 'point' : h.fist ? 'fist' : h.isOpen ? 'open' : null);
+function release(src) {
+  const i = Post.persistent.indexOf(src);
+  if (i >= 0) Post.persistent.splice(i, 1);
+}
 
 export class Kage {
   constructor(ctx) {
     this.ctx = ctx;
     this.ch = CH;
     const S = ctx.scene;
-    this.seq = [];
-    this.cand = null; this.candT = 0; this.held = null;
-    this.lastReg = -99; this.clearAt = 0;
-    this.level = 0;
+    this.seals = new Seals();
+    this.holds = { clone: new Hold(0.25), tiger: new Hold(0.4), stack: new Hold(0.2), grab: new Hold(0.25) };
+    this.clone = { on: false, n: 0, t: 0, life: 0, ax: 0, off: [0, 0, 0, 0], cool: 0 };
+    const orb = (a, b) => new FXQuad(S, 'rasengan', { a, b, intensity: 0 });
+    this.ras = {
+      ph: 'none', k: 0, x: 0, y: 0, slot: null, t: 0, vx: 0, vy: 0, R: 0, grow: 0, giant: false,
+      orb: orb(CHAKRA, CHAKRA_B), glow: new FXQuad(S, 'glow', { a: CHAKRA, b: CHAKRA_B, intensity: 0, param: [3, 0, 0, 0] }),
+      copies: [0, 1, 2, 3].map(() => orb(CHAKRA, CHAKRA_B)), swirl: null,
+    };
+    this.chi = {
+      ph: 'none', k: 0, slot: null, t: 0, x0: 0, y0: 0, path: [], ready: 0,
+      ball: new FXQuad(S, 'plasma', { a: CHAKRA, b: CHAKRA_B, intensity: 0 }),
+      copies: [0, 1, 2, 3].map(() => new FXQuad(S, 'plasma', { a: CHAKRA, b: CHAKRA_B, intensity: 0 })),
+    };
+    this.fire = {
+      ph: 'none', t: 0, x: 0, y: 0, mx: 0, my: 0, R: 0,
+      orbs: [0, 1, 2].map(() => new FXQuad(S, 'fireOrb', { a: [1, 0.4, 0.1], b: [1, 0.85, 0.4], intensity: 0 })),
+      heat: null,
+    };
     this.timers = [];
-    this.clone = { on: false, t: 0, life: 0, n: 0 };
-    this.vanish = { t: 0, on: false };
-    this.bindS = { on: false, t: 0, x: 0, y: 0, squeezed: false, tr: [] };
-    for (let i = 0; i < 8; i++) {
-      this.bindS.tr.push({
-        trail: new Trail(S, { max: 40, width: 30, life: 1.0, fire: false, a: CH.a, b: [1, 1, 1] }),
-        ex: 0, ey: 0, ph: 0, amp: 0, delay: 0,
-      });
-    }
-    this.ecl = { on: false, t: 0, x: 0, y: 0, r: 0, lens: null, glow: new FXQuad(S, 'glow', { a: CH.a, b: CH.b, intensity: 0, param: [2.2, 0, 0, 0] }), rays: 0 };
-    this.wisp = 0;
-    this.near = { t: -9, sign: false };
-    this.log = { on: false, t: 0, x: 0, y: 0, vy: 0, vx: 0, rot: 0, vr: 0, bounced: 0, boom: false };
-    this.crossT = 0; this.cloneCool = 0;
-    this.shu = { state: 'none', t: 0, x: 0, y: 0, vx: 0, vy: 0, rot: 0, spin: 0, r: 60, hold: 0, slot: 'R', bounces: 0, k: 0 };
   }
 
   enter() {
-    Post.clCol = [0.3, 1, 0.75];
-    this.ecl.lens = Post.source('lens');
+    Post.clCol = [0.35, 0.75, 1];
+    this.ras.swirl = Post.source('swirl');
+    this.fire.heat = Post.source('heat');
   }
 
   exit() {
-    this.shu.state = 'none'; this.shu.hold = 0;
-    this.seq.length = 0;
-    this.cand = null; this.candT = 0; this.held = null;
-    this.timers.length = 0;
     this.clone.on = false;
     for (let i = 0; i < 4; i++) Post.clone(i, 0, 0, 0);
     Post.resetExtras();
-    this.bindS.on = false;
-    this.bindS.tr.forEach((t) => { t.trail.pts.length = 0; t.trail.update(0); });
-    this.ecl.on = false;
-    this.ecl.glow.intensity = 0;
-    const i = Post.persistent.indexOf(this.ecl.lens);
-    if (i >= 0) Post.persistent.splice(i, 1);
-    this.ecl.lens = null;
+    const r = this.ras;
+    r.ph = 'none'; r.k = 0; r.orb.intensity = 0; r.glow.intensity = 0; r.copies.forEach((q) => { q.intensity = 0; });
+    release(r.swirl); r.swirl = null;
+    const c = this.chi;
+    c.ph = 'none'; c.k = 0; c.ball.intensity = 0; c.copies.forEach((q) => { q.intensity = 0; });
+    const f = this.fire;
+    f.ph = 'none'; f.orbs.forEach((q) => { q.intensity = 0; });
+    release(f.heat); f.heat = null;
+    this.timers.length = 0;
   }
 
   after(t, fn) { this.timers.push({ t, fn }); }
 
   spark(x, y, a, speed, o = {}) {
     return this.ctx.streaks.spawn({
-      x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, drag: o.drag ?? 1.6, grav: o.grav ?? 0,
-      life: o.life ?? rand(0.3, 0.6), c: o.c || pick(JADE), bright: o.bright ?? 2.1,
-      width: o.width ?? rand(1.5, 3), stretch: o.stretch ?? 0.04, fade: 1.2, fn: o.fn,
+      x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, drag: o.drag ?? 1.8, grav: o.grav ?? 0,
+      life: o.life ?? rand(0.25, 0.55), c: o.c || pick(VOLT), bright: o.bright ?? 2.2,
+      width: o.width ?? rand(1.5, 3), stretch: o.stretch ?? 0.04, fade: 1.2,
     });
   }
 
-  puff(x, y, n, spread = 1, size = 1) {
-    for (let i = 0; i < n; i++) {
-      const a = rand(0, TAU), s = rand(30, 260) * spread;
-      this.ctx.particles.spawn({
-        x: x + rand(-30, 30) * spread, y: y + rand(-30, 30) * spread,
-        vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.7 - rand(0, 60), drag: 1.6,
-        life: rand(0.6, 1.3), c: SMOKE, bright: 0.24, size: rand(46, 90) * size, size1: rand(110, 190) * size, fade: 1.4,
+  // The tracker can swap hand slots when hands overlap, so jutsu held in a
+  // hand follow whichever hand is nearest to them rather than a slot.
+  nearest(hands, x, y) {
+    let best = null, bd = Infinity;
+    for (const h of [hands.L, hands.R]) {
+      if (!h.present) continue;
+      const d = Math.hypot(h.cx - x, h.cy - y) / h.scale;
+      if (d < bd && d < 4) { bd = d; best = h; }
+    }
+    return best;
+  }
+
+  get body() { const I = this.ctx.phys.body?.info; return I && I.ok ? I : null; }
+
+  // ---------- clone formation ----------
+  // Screen transform for clone i: an effect at (x, y) on you shows up at
+  // the matching spot on that clone.
+  cloneXf(i, x, y) {
+    const H = window.innerHeight, A = this.clone.ax, s = CLONE_S[i];
+    return { x: A + this.clone.off[i] + (x - A) * s, y: H + (y - H) * s, s };
+  }
+
+  layout() {
+    // spread the clones clear of your own silhouette so they actually show
+    const W = window.innerWidth, I = this.body;
+    const ax = I ? I.cx : W / 2;
+    const bw = I ? Math.max(I.w, W * 0.28) : W * 0.34;
+    const near = Math.max(W * 0.27, bw * 0.95), far = near * 1.7;
+    const want = [-near, near, -far, far];
+    this.clone.ax = ax;
+    Post.clAnchor = ax;
+    for (let i = 0; i < 4; i++) {
+      let cx = ax + want[i];
+      // off-screen: flip to the other side, pushed further out
+      if (cx < W * 0.08 || cx > W * 0.92) cx = ax - want[i] * (i < 2 ? 1.7 : 0.6);
+      this.clone.off[i] = clamp(cx, W * 0.1, W * 0.9) - ax;
+    }
+  }
+
+  castClones() {
+    const { overlay, sfx } = this.ctx;
+    const cl = this.clone;
+    if (cl.on) {
+      // the seal again dismisses them
+      cl.life = Math.min(cl.life, cl.t + 0.01);
+      return;
+    }
+    this.layout();
+    cl.on = true; cl.t = 0; cl.life = 16; cl.n = 0;
+    overlay.callout('影分身の術', 'Shadow Clone Jutsu', { big: true, dur: 1.6 });
+    sfx.play('seal', 3);
+    const H = window.innerHeight;
+    for (let i = 0; i < 4; i++) {
+      this.after(0.1 + i * 0.13, () => {
+        if (!cl.on) return;
+        cl.n = i + 1;
+        const p = this.cloneXf(i, cl.ax, H * 0.55);
+        overlay.smoke(p.x, p.y, 14, 1.2 * CLONE_S[i], { spread: 1.4 });
+        overlay.sfxText('POOF!', p.x, p.y - H * 0.18 * CLONE_S[i], 0.9 * CLONE_S[i], [255, 255, 255]);
+        sfx.play('poof');
+        Post.shake(0.1);
       });
     }
-    for (let i = 0; i < n * 0.5; i++) this.spark(x, y, rand(0, TAU), rand(200, 900) * spread, { life: rand(0.25, 0.6) });
+    this.ctx.onMove(MOVE.clones);
   }
 
-  center(hands) {
-    const W = window.innerWidth, H = window.innerHeight;
-    const hs = [hands.L, hands.R].filter((h) => h.present);
-    if (!hs.length) return { x: W / 2, y: H * 0.5, sc: 90 };
-    return { x: hs.reduce((a, h) => a + h.cx, 0) / hs.length, y: hs.reduce((a, h) => a + h.cy, 0) / hs.length, sc: hs[0].scale };
-  }
-
-  // ---------- sign recognition ----------
-  classify(L, R, time) {
-    if (L.present && R.present) {
-      const sc = (L.scale + R.scale) / 2;
-      const d = Math.hypot(L.cx - R.cx, L.cy - R.cy) / sc;
-      const pose = L.point || L.two || R.point || R.two;
-      const fingers = (L.point || L.two) && (R.point || R.two);
-      if (d < CONFIG.touchDist * 2.2) this.near = { t: time, sign: fingers || (pose && d < CONFIG.touchDist * 1.4) };
-      if (fingers && d < CONFIG.touchDist * 2.0) return 'cross';
-      if (d < CONFIG.touchDist * 1.35 && !pose) return 'clap';
-      const a = oneHand(L), b = oneHand(R);
-      if (a === b) return a;
-      if (a && !b) return a;
-      if (b && !a) return b;
-      return null;
+  updateClones(dt, time) {
+    const cl = this.clone, H = window.innerHeight;
+    cl.cool -= dt;
+    if (!cl.on) { for (let i = 0; i < 4; i++) Post.clone(i, cl.off[i], 0, 0, CLONE_S[i]); return; }
+    cl.t += dt;
+    if (cl.t > cl.life) {
+      // they pop one at a time
+      if (cl.n > 0) {
+        const i = cl.n - 1;
+        const p = this.cloneXf(i, cl.ax, H * 0.55);
+        this.ctx.overlay.smoke(p.x, p.y, 10, 1.1 * CLONE_S[i], { spread: 1.2 });
+        this.ctx.sfx.play('poof');
+        cl.n--;
+        cl.t = cl.life - 0.1;
+      } else cl.on = false;
     }
-    const h = L.present ? L : R.present ? R : null;
-    // Hands pressed together often hide one from the tracker: if they were
-    // touching a moment ago and one just vanished, that's still the sign.
-    if (h && time - this.near.t < 0.45) {
-      if (this.near.sign && (h.point || h.two)) return 'cross';
-      if (!this.near.sign && !h.point && !h.two && !h.fist) return 'clap';
-    }
-    return h ? oneHand(h) : null;
+    for (let i = 0; i < 4; i++) Post.clone(i, cl.off[i] + Math.sin(time * 1.4 + i * 1.9) * 6, 0, i < cl.n ? 1 : 0, CLONE_S[i]);
   }
 
-  // What the chain so far could still become, for the on-screen hint.
-  hint() {
-    if (!this.seq.length) return null;
-    let best = null;
-    for (const r of RECIPES) {
-      for (let k = Math.min(this.seq.length, r.seq.length - 1); k >= 1; k--) {
-        const tail = this.seq.slice(-k);
-        if (tail.every((s, i) => s === r.seq[i])) {
-          if (!best || k > best.k || (k === best.k && r.seq.length < best.r.seq.length)) best = { r, k };
-          break;
+  // ---------- Rasengan ----------
+  updateRasengan(dt, time, hands, seal) {
+    const r = this.ras;
+    const { sfx, overlay, particles, fx, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    const cn = this.clone.on ? this.clone.n : 0;
+    r.t += dt;
+    if (seal && seal.sign === 'stack' && (r.ph === 'none' || r.ph === 'form')) {
+      const top = seal.top, bot = seal.bot;
+      if (r.ph === 'none') { r.ph = 'form'; r.k = 0; r.t = 0; sfx.play('rasengan'); r.giant = cn >= 2; }
+      r.slot = bot.slot;
+      // the swirling hand spins it up faster
+      const spin = clamp(top.speed / 3, 0, 1);
+      r.k = Math.min(1, r.k + dt * (0.75 + spin * 0.8));
+      r.x = lerp(bot.cx, top.cx, 0.4); r.y = lerp(bot.cy, top.cy, 0.4);
+      r.R = seal.sc * (0.35 + r.k * 0.35) * (r.giant ? 1.5 : 1);
+      // chakra being gathered in from all around
+      if (Math.random() < 0.8) {
+        const a = rand(0, TAU), d = r.R * rand(2.2, 4);
+        particles.spawn({ x: r.x + Math.cos(a) * d, y: r.y + Math.sin(a) * d, vx: -Math.cos(a + 0.9) * d * 3, vy: -Math.sin(a + 0.9) * d * 3, drag: 3, life: 0.35, c: CHAKRA_B, bright: 1.2, size: 5, size1: 2, fade: 1 });
+      }
+      overlay.chip(r.x, r.y + r.R * 1.9, r.k < 1 ? 'RASENGAN' : 'RASENGAN — STRIKE!', r.k);
+      if (r.k >= 1 && !r.readyCalled) {
+        r.readyCalled = true;
+        overlay.callout(r.giant ? '大玉螺旋丸' : '螺旋丸', r.giant ? 'Giant Rasengan' : 'Rasengan', { big: true, dur: 1.4 });
+        sfx.play('ready');
+        this.ctx.onMove(MOVE.rasengan);
+      }
+    } else if (r.ph === 'form') {
+      // seal broken: keep it in the lower hand if it's formed enough
+      if (r.k >= 0.4) { r.ph = 'held'; r.t = 0; if (!r.readyCalled) { r.readyCalled = true; overlay.callout('螺旋丸', 'Rasengan', { big: true, dur: 1.2 }); this.ctx.onMove(MOVE.rasengan); } }
+      else r.ph = 'fade';
+    }
+    if (r.ph === 'held') {
+      const h = this.nearest(hands, r.x, r.y) || hands[r.slot];
+      if (h.present) r.slot = h.slot;
+      if (!h.present) { r.lost = (r.lost || 0) + dt; if (r.lost > 0.6) r.ph = 'fade'; }
+      else {
+        r.lost = 0;
+        r.x = damp(r.x, h.cx - h.ux * h.scale * 0.15, 30, dt); r.y = damp(r.y, h.cy - h.uy * h.scale * 0.15 - h.scale * 0.2, 30, dt);
+        overlay.chip(h.cx, h.cy + h.scale * 1.9, 'THRUST TO STRIKE', 1);
+        if (h.thrust || h.flick || h.speed > 7.5) {
+          r.ph = 'drive'; r.t = 0;
+          const v = h.dir();
+          r.vx = h.thrust ? (W / 2 - r.x) * 1.2 : v.x * 1700; r.vy = h.thrust ? (H / 2 - r.y) * 1.2 : v.y * 1700;
+          r.thrust = h.thrust;
+          sfx.play('throw'); sfx.play('rasengan');
+          overlay.speedLines(1, r.x, r.y);
+          Post.punch(1, r.x, r.y);
         }
       }
+      if (r.t > 7) r.ph = 'fade';
     }
-    if (!best) return null;
-    const next = best.r.seq[best.k];
-    const name = CH.moves[best.r.move].name;
-    return `${name.toUpperCase()}  ›  ${SIGNS[next].k} ${SIGNS[next].w}`;
+    if (r.ph === 'drive') {
+      // it grinds forward, swelling, tearing up everything it touches
+      r.x += r.vx * dt; r.y += r.vy * dt; r.vx *= Math.exp(-dt * 2.5); r.vy *= Math.exp(-dt * 2.5);
+      r.R = Math.min(r.R * Math.exp(dt * (r.thrust ? 2.2 : 1.1)), base * 0.3);
+      Post.shake(dt * 2); Post.aberrate(6);
+      phys.blast(r.x, r.y, r.R * 2.5, 900 * dt * 60);
+      for (let i = 0; i < 6; i++) this.spark(r.x + rand(-r.R, r.R) * 0.8, r.y + rand(-r.R, r.R) * 0.8, rand(0, TAU), rand(400, 1200), { c: pick([CHAKRA_B, [1, 1, 1]]) });
+      if (Math.random() < 0.3) phys.burst(r.x, r.y, 2, 'rock', { speed: 900, size: 10 });
+      if (r.t > 0.4 || r.x < 0 || r.x > W || r.y < 0 || r.y > H) this.rasenBoom(r);
+    }
+    if (r.ph === 'boom') {
+      const k = clamp(r.t / 0.9, 0, 1);
+      r.R = lerp(r.R0, r.R1, easeOutCubic(k));
+      if (k >= 1) r.ph = 'fade';
+    }
+    if (r.ph === 'fade') { r.k = Math.max(0, r.k - dt * 3); if (r.k <= 0) { r.ph = 'none'; r.readyCalled = false; } }
+
+    // draw
+    const on = r.ph === 'form' || r.ph === 'held' || r.ph === 'drive' || r.ph === 'boom' || (r.ph === 'fade' && r.k > 0);
+    const show = on ? (r.ph === 'fade' ? r.k : r.ph === 'boom' ? 1 - clamp(r.t / 0.9, 0, 1) * 0.9 : Math.min(1, 0.4 + r.k)) : 0;
+    // the quad is 2 / 0.34 sphere radii wide; the glow hugs the ball
+    const size = r.R / 0.34;
+    r.orb.set(r.x, r.y, size * 2); r.orb.param(0.4 + r.k * 0.6, r.ph === 'drive' || r.ph === 'boom' ? 1 : 0, 0, 0); r.orb.intensity = show * 1.0; r.orb.tick(time);
+    r.glow.set(r.x, r.y, r.R * 5); r.glow.intensity = show * 0.45; r.glow.tick(time);
+    if (r.swirl) { r.swirl.x = r.x; r.swirl.y = r.y; r.swirl.radius = r.R * 3.2; r.swirl.strength = show * (r.ph === 'drive' || r.ph === 'boom' ? 2.2 : 0.9); }
+    for (let i = 0; i < 4; i++) {
+      const q = r.copies[i];
+      if (i < cn && on && r.ph !== 'boom') {
+        const p = this.cloneXf(i, r.x, r.y);
+        q.set(p.x, p.y, size * 2 * p.s); q.param(0.4 + r.k * 0.6, 0, 0, 0); q.intensity = show * 0.6; q.tick(time + i);
+      } else q.intensity = 0;
+    }
+    if (on) sfx.loop('spin', clamp(0.3 + r.k * 0.7, 0, 1) * show);
+    return on ? 0.6 + r.k * 0.5 : 0;
   }
 
-  register(sign, time, hands) {
-    const { sfx, fx } = this.ctx;
-    this.seq.push(sign);
-    if (this.seq.length > 5) this.seq.shift();
-    this.lastReg = time;
-    this.level = 1.3;
-    sfx.play('seal', this.seq.length);
-    const hs = [hands.L, hands.R].filter((h) => h.present);
-    const near = sign === 'clap' ? [this.center(hands)] : hs;
-    for (const h of near) {
-      const x = h.cx ?? h.x, y = h.cy ?? h.y, sc = h.scale ?? h.sc;
-      fx.ring({ x, y, r0: sc * 0.4, r1: sc * 2.4, dur: 0.35, width: 8, a: CH.a, b: CH.b, intensity: 1.6 });
-      fx.glow({ x, y, s0: sc, s1: sc * 3.4, dur: 0.22, a: CH.a, b: CH.b, intensity: 1.6 });
-      for (let i = 0; i < 10; i++) this.spark(x, y, rand(0, TAU), rand(250, 650), { life: rand(0.2, 0.4), width: 2 });
+  rasenBoom(r) {
+    const { fx, sfx, overlay, phys } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H), base = Math.min(W, H);
+    r.ph = 'boom'; r.t = 0;
+    r.x = clamp(r.x, 0, W); r.y = clamp(r.y, 0, H);
+    r.R0 = r.R; r.R1 = Math.min(base * 0.45, r.R * (r.giant ? 3.2 : 2.6));
+    const p = this.ctx.voice.power * (r.giant ? 1.4 : 1);
+    Post.freeze(0.12); Post.impact(0.12, CHAKRA_B); Post.flashScreen(0.6, CHAKRA_B);
+    Post.shake(0.9); Post.punch(2 * p, r.x, r.y); Post.aberrate(16); Post.bloom(2.5);
+    Post.shockwave({ x: r.x, y: r.y, speed: 1500, width: 120, strength: 46 * p, life: 1.0 });
+    Post.shockwave({ x: r.x, y: r.y, speed: 800, width: 70, strength: 26 * p, life: 1.1 });
+    fx.ring({ x: r.x, y: r.y, r0: r.R, r1: diag * 0.55 * p, dur: 0.8, width: 60, a: CHAKRA, b: CHAKRA_B, noise: 0.3, intensity: 2 });
+    fx.glow({ x: r.x, y: r.y, s0: r.R, s1: diag * 0.7, dur: 0.7, a: CHAKRA, b: [1, 1, 1], intensity: 4 });
+    for (let i = 0; i < 160 * p; i++) this.spark(r.x, r.y, rand(0, TAU), rand(600, 2400), { c: pick([CHAKRA_B, [1, 1, 1], CHAKRA]), life: rand(0.4, 0.9) });
+    phys.blast(r.x, r.y, diag * 0.6, 3400 * p);
+    phys.burst(r.x, r.y, 26, 'rock', { speed: 1500, size: 14, up: 500, kinds: ['rock', 'wood', 'glass'] });
+    overlay.crack(r.x, r.y, 1.2 * p);
+    overlay.sfxText('DOOOM!', r.x, r.y - r.R * 1.6, 1.5, [200, 230, 255]);
+    sfx.play('nova');
+  }
+
+  // ---------- Chidori ----------
+  updateChidori(dt, time, hands, seal) {
+    const c = this.chi;
+    const { sfx, overlay, lines, particles, fx } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
+    const cn = this.clone.on ? this.clone.n : 0;
+    c.t += dt;
+    if (seal && seal.sign === 'grab' && c.ph === 'charge' && c.k > 0.5) {
+      const hh = seal.held;
+      if (hh.thrust || hh.flick || hh.speed > 7) { c.ph = 'ready'; c.ready = 5; overlay.callout('千鳥', 'Chidori', { big: true, dur: 1.2 }); this.ctx.onMove(MOVE.chidori); }
     }
-    Post.bloom(0.5);
-    Post.aberrate(3 + this.seq.length * 1.4);
-    for (const r of RECIPES) {
-      if (this.seq.length < r.seq.length) continue;
-      const tail = this.seq.slice(-r.seq.length);
-      if (tail.every((s, i) => s === r.seq[i])) {
-        this.cast(r, hands);
-        this.after(0.5, () => { this.seq.length = 0; });
-        return;
+    if (seal && seal.sign === 'grab' && (c.ph === 'none' || c.ph === 'charge' || (c.ph === 'ready' && seal.held.speed < 4))) {
+      if (c.ph === 'none') { c.ph = 'charge'; c.k = 0; sfx.play('chidori'); }
+      c.slot = seal.held.slot;
+      c.k = Math.min(1, c.k + dt / 0.9);
+      if (c.k >= 1 && c.ph === 'charge') {
+        c.ph = 'ready'; c.ready = 5;
+        overlay.callout('千鳥', 'Chidori', { big: true, dur: 1.4 });
+        this.ctx.onMove(MOVE.chidori);
+      }
+    } else if (c.ph === 'charge') {
+      c.ph = c.k > 0.5 ? 'ready' : 'none';
+      c.ready = 5;
+      if (c.ph === 'ready') { overlay.callout('千鳥', 'Chidori', { big: true, dur: 1.2 }); this.ctx.onMove(MOVE.chidori); }
+    }
+    if (seal && seal.sign === 'grab') { c.x = seal.held.cx; c.y = seal.held.cy; }
+    let h = c.slot ? hands[c.slot] : null;
+    if (c.ph !== 'none' && c.x !== undefined) {
+      const n = this.nearest(hands, c.x, c.y);
+      if (n) { h = n; c.slot = n.slot; }
+    }
+    if (h && h.present && c.ph !== 'dash') { c.x = h.cx; c.y = h.cy; }
+    if (c.ph === 'ready' && h) {
+      c.ready -= dt;
+      if (h.present) overlay.chip(h.cx, h.cy + h.scale * 1.9, 'LUNGE!', 1);
+      if (c.ready <= 0) c.ph = 'none';
+      else if (h.present && (h.thrust || h.flick || h.speed > 7)) {
+        c.ph = 'dash'; c.t = 0; c.x0 = h.cx; c.y0 = h.cy; c.path = [[h.cx, h.cy]];
+        sfx.play('thunder');
+        overlay.speedLines(1, h.cx, h.cy);
+        Post.afterimage(0.6, 1400);
       }
     }
+    if (c.ph === 'dash' && h) {
+      if (h.present) c.path.push([h.cx, h.cy]);
+      // lightning spear along the lunge
+      for (let i = 1; i < c.path.length; i++) {
+        const [ax, ay] = c.path[i - 1], [bx, by] = c.path[i];
+        lines.spawn(ax, ay, bx, by, base * 0.05, CHAKRA, 0.9, 0.35);
+        lines.spawn(ax, ay, bx, by, base * 0.016, [1, 1, 1], 2.2, 0.35);
+      }
+      if (c.t > 0.22) {
+        const [ex, ey] = c.path[c.path.length - 1];
+        // punch through: the screen splits where the Chidori lands
+        Post.freeze(0.14); Post.impact(0.14, CHAKRA_B); Post.flashScreen(0.7, [0.8, 0.9, 1]);
+        Post.shake(0.8); Post.punch(1.8, ex, ey); Post.aberrate(18);
+        Post.shockwave({ x: ex, y: ey, speed: 1400, width: 90, strength: 36, life: 0.8 });
+        Post.tear({ x0: c.x0, y0: c.y0, x1: ex + (ex - c.x0) * 0.6, y1: ey + (ey - c.y0) * 0.6, strength: 30, life: 1.2, width: 14 });
+        for (let i = 0; i < 14; i++) bolt(lines, ex, ey, ex + rand(-1, 1) * base * 0.6, ey + rand(-1, 1) * base * 0.6, { c: pick(VOLT), width: rand(3, 7), life: 0.18, branch: 0.7 });
+        fx.glow({ x: ex, y: ey, s0: base * 0.1, s1: base * 1.1, dur: 0.5, a: CHAKRA, b: [1, 1, 1], intensity: 4 });
+        this.ctx.overlay.crack(ex, ey, 1.3);
+        this.ctx.phys.blast(ex, ey, base * 0.8, 2800);
+        this.ctx.phys.burst(ex, ey, 16, 'glass', { speed: 1300, size: 12, kinds: ['glass', 'rock'] });
+        overlay.sfxText('CHIDORI!', ex, ey - base * 0.12, 1.3, [210, 235, 255]);
+        sfx.play('nova');
+        c.ph = 'after'; c.t = 0;
+      }
+    }
+    if (c.ph === 'after' && c.t > 0.8) c.ph = 'none';
+
+    // crackling hand
+    const live = (c.ph === 'charge' || c.ph === 'ready' || c.ph === 'dash') && h && h.present;
+    const k = live ? (c.ph === 'charge' ? 0.3 + c.k * 0.7 : 1) : 0;
+    c.ball.intensity = damp(c.ball.intensity, k * 0.75, 12, dt);
+    if (h && h.present) { c.ball.set(h.cx, h.cy, h.scale * 2.6); c.ball.param(k * 0.5, 0, 0, 0); }
+    c.ball.tick(time);
+    if (live) {
+      const sc = h.scale;
+      const n = 3 + ((k * 6) | 0);
+      for (let i = 0; i < n; i++) {
+        const a = rand(0, TAU), d = sc * rand(1.2, 3.2) * (0.5 + k);
+        bolt(lines, h.cx, h.cy, h.cx + Math.cos(a) * d, h.cy + Math.sin(a) * d, { c: pick(VOLT), width: rand(1.5, 3.5), life: 0.05, jag: 0.35, depth: 4, branch: 0.4 });
+      }
+      // arcs rake the floor under the hand
+      if (Math.random() < 0.25 * k) bolt(lines, h.cx, h.cy, h.cx + rand(-1, 1) * sc * 3, H * 0.99, { c: pick(VOLT), width: 2.5, life: 0.06, jag: 0.3 });
+      for (let i = 0; i < 3; i++) this.spark(h.cx, h.cy, rand(0, TAU), rand(200, 700) * k, { life: 0.2 });
+      sfx.loop('chirp', 0.5 + k * 0.5); sfx.loop('buzz', 0.4 * k);
+      Post.wantEdge(0.12 * k, CHAKRA);
+      // the clones hold Chidori too
+      for (let i = 0; i < cn; i++) {
+        const p = this.cloneXf(i, h.cx, h.cy);
+        if (Math.random() < 0.6) bolt(lines, p.x, p.y, p.x + rand(-1, 1) * sc * 2 * p.s, p.y + rand(-1, 1) * sc * 2 * p.s, { c: pick(VOLT), width: 2, life: 0.05, depth: 4 });
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      const q = c.copies[i];
+      if (live && i < cn) { const p = this.cloneXf(i, h.cx, h.cy); q.set(p.x, p.y, h.scale * 2.6 * p.s); q.param(k * 0.5, 0, 0, 0); q.intensity = k * 0.6; q.tick(time + i); }
+      else q.intensity = 0;
+    }
+    return live ? 0.6 + k * 0.6 : 0;
   }
 
-  cast(r, hands) {
-    this.ctx.sfx.play('ready');
-    this[r.fn](this.center(hands), hands);
-    this.ctx.onMove(r.move);
-    this.level = 2;
+  // ---------- Great Fireball ----------
+  mouth(seal) {
+    const I = this.body;
+    const H = window.innerHeight;
+    if (I) return { x: I.hx, y: I.hy + H * 0.06 };
+    return { x: seal ? seal.x : window.innerWidth / 2, y: (seal ? seal.y : H * 0.5) - (seal ? seal.sc * 2.2 : 0) };
   }
 
-  // ---------- main update ----------
+  startFireball(seal) {
+    const f = this.fire;
+    const m = this.mouth(seal);
+    f.ph = 'inhale'; f.t = 0; f.mx = m.x; f.my = m.y; f.x = m.x; f.y = m.y; f.R = 0;
+    this.ctx.overlay.callout('火遁・豪火球の術', 'Fire Style: Great Fireball', { big: true, dur: 1.8 });
+    this.ctx.sfx.play('charge');
+    this.ctx.onMove(MOVE.fireball);
+  }
+
+  updateFireball(dt, time) {
+    const f = this.fire;
+    const { sfx, particles, phys, overlay, fx } = this.ctx;
+    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H), diag = Math.hypot(W, H);
+    f.t += dt;
+    const cn = this.clone.on ? this.clone.n : 0;
+    if (f.ph === 'inhale') {
+      // air and embers get sucked into your mouth
+      for (let i = 0; i < 3; i++) {
+        const a = rand(0, TAU), d = base * rand(0.2, 0.4);
+        particles.spawn({ x: f.mx + Math.cos(a) * d, y: f.my + Math.sin(a) * d, vx: -Math.cos(a) * d * 2.6, vy: -Math.sin(a) * d * 2.6, drag: 2, life: 0.35, c: [1, 0.6, 0.2], bright: 1.3, size: 4, size1: 1, fade: 1 });
+      }
+      sfx.loop('charge', f.t / 0.55);
+      if (f.t > 0.55) {
+        f.ph = 'blow'; f.t = 0;
+        sfx.play('fireball');
+        Post.flashScreen(0.2, [1, 0.6, 0.2]); Post.punch(1.2, f.mx, f.my);
+      }
+    }
+    if (f.ph === 'blow') {
+      // a roiling sphere pours out of your mouth and swells toward the lens
+      const k = clamp(f.t / 1.6, 0, 1);
+      const tx = W / 2 + (f.mx - W / 2) * 0.35, ty = H * 0.46;
+      f.x = lerp(f.mx, tx, easeOutCubic(k)); f.y = lerp(f.my, ty, easeOutCubic(k));
+      f.R = base * (0.05 + easeOutCubic(k) * 0.3) * this.ctx.voice.power;
+      sfx.loop('roar', 1);
+      Post.shake(dt * 1.6); Post.wantEdge(0.25, [1, 0.5, 0.15]);
+      for (let i = 0; i < 6; i++) {
+        const a = rand(0, TAU), s = rand(200, 800);
+        particles.spawn({ x: f.x + Math.cos(a) * f.R * 0.8, y: f.y + Math.sin(a) * f.R * 0.8, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 200, drag: 1.4, life: rand(0.4, 0.9), c: pick([[1, 0.4, 0.08], [1, 0.62, 0.22]]), bright: 0.7, size: base * 0.03, size1: base * 0.08, fade: 1.2, flicker: 0.3 });
+      }
+      // stream between mouth and fireball
+      for (let i = 0; i < 3; i++) {
+        const t = Math.random();
+        particles.spawn({ x: lerp(f.mx, f.x, t) + rand(-8, 8), y: lerp(f.my, f.y, t) + rand(-8, 8), vx: (f.x - f.mx) * 1.5, vy: (f.y - f.my) * 1.5, drag: 1, life: 0.25, c: [1, 0.7, 0.3], bright: 0.9, size: base * 0.03 * (0.4 + t), size1: base * 0.05, fade: 1 });
+      }
+      if (Math.random() < 0.4) phys.blast(f.x, f.y, f.R * 2.2, 700);
+      if (f.t > 1.6) {
+        f.ph = 'fade'; f.t = 0;
+        Post.flashScreen(0.3, [1, 0.6, 0.25]); Post.shake(0.6);
+        Post.shockwave({ x: f.x, y: f.y, speed: 1100, width: 110, strength: 34, life: 1.0 });
+        phys.blast(f.x, f.y, diag * 0.7, 2600);
+        phys.burst(f.x, f.y, 18, 'wood', { speed: 1200, size: 12, hot: 2, kinds: ['wood', 'rock'] });
+        for (let i = 0; i < 8; i++) overlay.smoke(f.x + rand(-1, 1) * f.R, f.y + rand(-1, 1) * f.R, 4, 1.6, { spread: 2 });
+        overlay.sfxText('FWOOOM!', f.x, f.y - f.R * 0.9, 1.7, [255, 190, 90]);
+        sfx.play('explode', 1.4);
+      }
+    }
+    if (f.ph === 'fade' && f.t > 0.8) f.ph = 'none';
+    const on = f.ph === 'blow' || f.ph === 'fade';
+    const k = f.ph === 'blow' ? 1 : f.ph === 'fade' ? 1 - f.t / 0.8 : 0;
+    f.orbs.forEach((q, i) => {
+      const j = [[0, 0, 1], [0.2, -0.15, 0.75], [-0.22, 0.12, 0.8]][i];
+      q.set(f.x + j[0] * f.R, f.y + j[1] * f.R, f.R * 2.6 * j[2] * (f.ph === 'fade' ? 1 + (1 - k) * 0.6 : 1));
+      q.param(0.15, 0, 0, 0);
+      q.intensity = on ? k * (i === 0 ? 0.85 : 0.55) : 0;
+      q.tick(time + i * 3.1);
+    });
+    if (f.heat) { f.heat.x = f.x; f.heat.y = f.y; f.heat.radius = f.R * 2.2; f.heat.strength = on ? 4.5 * k : 0; }
+    // clones breathe fire too
+    if (on && cn && Math.random() < 0.6) {
+      for (let i = 0; i < cn; i++) {
+        const p = this.cloneXf(i, f.mx, f.my);
+        const a = rand(-0.5, 0.5) + Math.atan2(H * 0.46 - p.y, (W / 2 - p.x) * 0.3), s = rand(400, 900);
+        particles.spawn({ x: p.x, y: p.y, vx: Math.cos(a) * s * 0.3, vy: Math.sin(a) * s, drag: 1.2, life: 0.6, c: [1, 0.5, 0.15], bright: 1.3, size: base * 0.03 * p.s, size1: base * 0.1 * p.s, fade: 1.2 });
+      }
+    }
+    return on ? 1 : 0;
+  }
+
+  // ---------- frame ----------
   update(dt, time, hands) {
     for (let i = this.timers.length - 1; i >= 0; i--) {
       const t = this.timers[i];
@@ -205,589 +477,39 @@ export class Kage {
       if (t.t <= 0) { this.timers.splice(i, 1); t.fn(); }
     }
     const L = hands.L, R = hands.R;
-    const any = L.present || R.present;
+    this.lastHands = hands;
+    const seal = this.seals.read(L, R, time);
+    const sign = seal ? seal.sign : null;
+    for (const k of Object.keys(this.holds)) this.holds[k].update(sign === k ? k : null, dt);
+    const { overlay } = this.ctx;
 
-    let sign = this.classify(L, R, time);
-    // the clone sign is its own instant jutsu, not a link in a chain
-    this.cloneCool -= dt;
-    this.crossT = sign === 'cross' ? this.crossT + dt : 0;
-    if (this.crossT > 0.28 && this.cloneCool <= 0 && !this.ecl.on) {
-      this.cloneCool = 2.5;
-      this.seq.length = 0;
-      this.cast(RECIPES.find((r) => r.fn === 'clones'), hands);
+    // live readout of the seal you're forming
+    if (seal && SEAL_NAME[sign] && sign !== 'stack' && sign !== 'grab') {
+      const hd = this.holds[sign];
+      overlay.chip(seal.x, seal.y + seal.sc * 2.2, SEAL_NAME[sign], hd ? hd.p : 0);
     }
-    if (sign === 'cross') sign = null;
-    if (sign !== this.cand) { this.cand = sign; this.candT = 0; if (sign !== this.held) this.held = null; } else if (sign) this.candT += dt;
-    if (sign && this.candT >= HOLD && this.held !== sign && !(this.seq[this.seq.length - 1] === sign && time - this.lastReg < 1.0)) {
-      this.held = sign;
-      this.register(sign, time, hands);
-    }
-    if (this.seq.length && time - this.lastReg > CHAIN_GAP) this.seq.length = 0;
+    if (this.holds.clone.ready) { this.castClones(); Post.bloom(0.6); }
+    if (this.holds.tiger.ready && this.fire.ph === 'none') this.startFireball(seal);
 
-    if (any || this.seq.length) {
-      this.ctx.overlay.setSigns({
-        slots: 5,
-        seq: this.seq.map((s) => SIGNS[s].k),
-        pending: sign && this.held !== sign ? { k: SIGNS[sign].k, p: clamp(this.candT / HOLD, 0, 1) } : null,
-        label: this.hint() || (this.crossT > 0 ? 'CLONE SIGN' : sign ? SIGNS[sign].w : ''),
-        y: 0.68,
-      });
-    }
-
-    // shadow wisps curling off the fingertips
-    this.wisp -= dt;
-    for (const h of [L, R]) {
-      if (h.present && this.wisp <= 0) {
-        const p = h.pts[[4, 8, 12, 16, 20][(Math.random() * 5) | 0]];
-        this.ctx.particles.spawn({
-          x: p.x, y: p.y, vx: rand(-30, 30), vy: rand(-80, -20), drag: 1.4, life: rand(0.5, 0.9),
-          c: pick(JADE), bright: 0.55, size: rand(5, 9), size1: 14, fade: 1.2, flicker: 0.2,
-        });
-      }
-    }
-    if (this.wisp <= 0) this.wisp = 0.06;
-
-    this.updateShuriken(dt, time, hands);
-    this.updateLog(dt, time);
     this.updateClones(dt, time);
-    this.updateBind(dt, time);
-    this.updateEclipse(dt, time);
-    this.level = damp(this.level, 0, 2.2, dt);
+    const lr = this.updateRasengan(dt, time, hands, seal);
+    const lc = this.updateChidori(dt, time, hands, seal);
+    const lf = this.updateFireball(dt, time);
 
-    if (this.seq.length >= 2) Post.wantEdge(0.05 * this.seq.length, CH.a);
-    const lv = 0.32 + this.level * 0.5 + (this.clone.on ? 0.3 : 0) + (this.ecl.on ? 0.8 : 0);
-    return [lv, lv];
+    // wisps of chakra off the fingertips
+    for (const h of [L, R]) {
+      if (!h.present || Math.random() > 0.35) continue;
+      const p = h.pts[[4, 8, 12, 16, 20][(Math.random() * 5) | 0]];
+      this.ctx.particles.spawn({ x: p.x, y: p.y, vx: rand(-30, 30), vy: rand(-80, -20), drag: 1.4, life: rand(0.4, 0.8), c: CHAKRA, bright: 0.5, size: rand(4, 8), size1: 12, fade: 1.2, flicker: 0.2 });
+    }
+    const base = 0.3 + (this.clone.on ? 0.2 : 0);
+    const lvL = Math.max(base, lf, this.ras.slot === 'L' ? lr : 0, this.chi.slot === 'L' ? lc : 0);
+    const lvR = Math.max(base, lf, this.ras.slot === 'R' ? lr : 0, this.chi.slot === 'R' ? lc : 0);
+    return [lvL, lvR];
   }
 
-  // ---------- Windmill Shuriken ----------
-  // Hold an open palm still: a giant shuriken spins up over it and follows
-  // your hand. Flick to throw; it ricochets off the edges and flies back.
-  updateShuriken(dt, time, hands) {
-    const s = this.shu, { sfx, fx, overlay } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight;
-    const h = hands[s.slot];
-    s.t += dt;
-    if (s.state === 'none') {
-      let cand = null;
-      for (const hh of [hands.L, hands.R]) {
-        if (hh.present && hh.isOpen && hh.still && !hh.point && !hh.two && !hh.pinch && !(hands.L.present && hands.R.present && Math.hypot(hands.L.cx - hands.R.cx, hands.L.cy - hands.R.cy) / hh.scale < CONFIG.touchDist * 2)) cand = hh;
-      }
-      if (cand && this.seq.length <= 1 && !this.ecl.on && !this.bindS.on) {
-        s.hold = s.slot === cand.slot ? s.hold + dt : 0;
-        s.slot = cand.slot;
-        const k = clamp(s.hold / 0.9, 0, 1);
-        if (k > 0.15 && Math.random() < dt * 60 * k) {
-          const a = rand(0, TAU), d = cand.scale * rand(1.2, 2);
-          this.spark(cand.cx + Math.cos(a) * d, cand.cy + Math.sin(a) * d, a + Math.PI, d * 4, { life: 0.25, drag: 0 });
-        }
-        if (s.hold > 0.9) {
-          s.state = 'held'; s.t = 0; s.k = 0; s.x = cand.cx; s.y = cand.cy - cand.scale * 0.3; s.spin = 0; s.rot = 0;
-          this.seq.length = 0;
-          overlay.callout('風魔手裏剣', 'Windmill Shuriken');
-          overlay.smoke(s.x, s.y, 8, 0.9, { spread: 1 });
-          sfx.play('poof', 0.7);
-          sfx.play('kunai');
-          fx.ring({ x: s.x, y: s.y, r0: 20, r1: cand.scale * 3, dur: 0.35, width: 8, a: CH.a, b: CH.b, intensity: 1.6 });
-          this.ctx.onMove(5);
-        }
-      } else s.hold = Math.max(0, s.hold - dt * 3);
-      return;
-    }
-    s.r = clamp((h.present ? h.scale : 80) * 1.25, 55, 120);
-    s.rot += s.spin * dt;
-    if (s.state === 'held') {
-      s.k = Math.min(1, s.k + dt * 4);
-      s.spin = damp(s.spin, 9 + (h.present ? h.speed * 3 : 0), 4, dt);
-      if (h.present) {
-        s.x = damp(s.x, h.cx, 20, dt); s.y = damp(s.y, h.cy - h.scale * 0.3, 20, dt);
-        s.lost = 0;
-        if (h.flick && s.t > 0.2) {
-          const d = h.dir();
-          s.vx = d.x * 2100; s.vy = d.y * 2100;
-          s.state = 'fly'; s.t = 0; s.bounces = 0; s.spin = 38;
-          sfx.play('whip'); sfx.play('kunai');
-          Post.shake(0.3); Post.aberrate(6);
-          this.level = 1.6;
-        }
-      } else {
-        s.lost = (s.lost || 0) + dt;
-        if (s.lost > 1.2) this.dropShuriken();
-      }
-      if (h.present && h.fist) this.dropShuriken();
-    } else if (s.state === 'fly' || s.state === 'back') {
-      if (s.state === 'fly') {
-        // a slight curve, like it's riding the wind
-        const c = Math.cos(dt * 0.9), sn = Math.sin(dt * 0.9);
-        const vx = s.vx * c - s.vy * sn; s.vy = s.vx * sn + s.vy * c; s.vx = vx;
-        if (s.t > 0.75 || s.bounces >= 2) { s.state = 'back'; s.t = 0; }
-      } else {
-        const tx = h.present ? h.cx : W / 2, ty = h.present ? h.cy - h.scale * 0.3 : H * 0.5;
-        const dx = tx - s.x, dy = ty - s.y, d = Math.hypot(dx, dy) || 1;
-        const sp = Math.min(3000, Math.hypot(s.vx, s.vy) + 2600 * dt);
-        s.vx = damp(s.vx, (dx / d) * sp, 5, dt); s.vy = damp(s.vy, (dy / d) * sp, 5, dt);
-        if (d < s.r * 0.8) {
-          if (h.present) {
-            s.state = 'held'; s.t = 0;
-            sfx.play('lock'); Post.shake(0.25);
-            fx.ring({ x: s.x, y: s.y, r0: 10, r1: s.r * 2.4, dur: 0.3, width: 8, a: CH.a, b: CH.b, intensity: 1.8 });
-            for (let i = 0; i < 18; i++) this.spark(s.x, s.y, rand(0, TAU), rand(300, 800));
-          } else this.dropShuriken();
-        }
-        if (s.t > 3) this.dropShuriken();
-      }
-      s.x += s.vx * dt; s.y += s.vy * dt;
-      // ricochet off the frame
-      const m = s.r * 0.6;
-      let hit = false;
-      if (s.x < m && s.vx < 0) { s.x = m; s.vx *= -1; hit = true; }
-      if (s.x > W - m && s.vx > 0) { s.x = W - m; s.vx *= -1; hit = true; }
-      if (s.y < m && s.vy < 0) { s.y = m; s.vy *= -1; hit = true; }
-      if (s.y > H - m && s.vy > 0) { s.y = H - m; s.vy *= -1; hit = true; }
-      if (hit && s.state === 'fly') {
-        s.bounces++;
-        sfx.play('crack');
-        Post.shake(0.45); Post.freeze(0.04);
-        Post.shockwave({ x: s.x, y: s.y, speed: 1000, width: 50, strength: 20, life: 0.4 });
-        overlay.crack(clamp(s.x, 4, W - 4), clamp(s.y, 4, H - 4), 0.5);
-        for (let i = 0; i < 30; i++) this.spark(s.x, s.y, rand(0, TAU), rand(400, 1400), { c: [1, 0.9, 0.6] });
-      }
-      // sparks shed off the blades, and a wind tear behind it
-      for (let i = 0; i < 3; i++) {
-        const a = s.rot + i * TAU / 3;
-        this.spark(s.x + Math.cos(a) * s.r, s.y + Math.sin(a) * s.r, a + Math.PI / 2, rand(200, 500), { life: 0.2, width: 1.6 });
-      }
-      sfx.loop('hum', 0.5);
-    }
-    overlay.setShuriken({ x: s.x, y: s.y, r: s.r * (0.3 + 0.7 * easeOutCubic(s.k)), rot: s.rot, a: s.k, vx: s.state === 'held' ? 0 : s.vx, vy: s.state === 'held' ? 0 : s.vy, spin: s.spin });
-  }
-
-  dropShuriken() {
-    const s = this.shu;
-    if (s.state === 'none') return;
-    this.ctx.overlay.smoke(s.x, s.y, 8, 0.9, { spread: 1 });
-    this.ctx.sfx.play('poof', 0.6);
-    s.state = 'none'; s.hold = 0; s.k = 0;
-  }
-
-  // ---------- Shadow Clones ----------
-  clones(c, hands) {
-    const { overlay, sfx } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight;
-    this.clone.on = true; this.clone.t = 0; this.clone.life = 10; this.clone.n = 0; this.clone.popT = 0;
-    // you stand roughly under your hands; the clones line up around that
-    this.clone.ax = clamp(c.x, W * 0.3, W * 0.7); this.clone.cx = this.clone.ax; this.clone.cy = H * 0.62;
-    Post.clAnchor = this.clone.ax;
-    c = { x: this.clone.ax, y: H * 0.62 };
-    overlay.callout('影分身', 'Shadow Clones', { big: true, dur: 1.5 });
-    sfx.play('clone');
-    sfx.play('poof');
-    Post.flashScreen(0.25, CH.b);
-    Post.shake(0.4);
-    Post.aberrate(10);
-    Post.glitchFor(0.5);
-    // each clone bursts in with its own puff, a heartbeat apart
-    for (let i = 0; i < 4; i++) {
-      this.after(0.12 * i, () => {
-        this.clone.n = i + 1;
-        const x = this.clonePos(i), y = H * (1 - 0.45 * CLONE_S[i]);
-        this.puff(x, y, 10, 1.1, 0.6);
-        this.ctx.overlay.smoke(x, y - 20, 16, 1.5, { spread: 1.4 });
-        this.ctx.overlay.smoke(x, y + 120, 8, 1.2, { spread: 1.8 });
-        if (i % 2 === 0) this.ctx.overlay.sfxText('POOF!', x, y - 160, 0.8, [80, 255, 180]);
-        this.ctx.fx.glow({ x, y, s0: 60, s1: 300, dur: 0.25, a: CH.a, b: CH.b, intensity: 1.2 });
-        this.ctx.fx.ring({ x, y, r0: 10, r1: 240, dur: 0.4, width: 14, a: CH.a, b: CH.b, intensity: 1.6 });
-        Post.shockwave({ x, y, speed: 1000, width: 60, strength: 20, life: 0.5 });
-        this.ctx.sfx.play('poof', 0.7);
-      });
-    }
-  }
-
-  // Screen x of clone i, kept inside the frame whichever side you stand on.
-  clonePos(i) {
-    const W = window.innerWidth, ax = this.clone.ax ?? W / 2;
-    let x = ax + CLONE_X[i] * W;
-    if (x < W * 0.08 || x > W * 0.92) x = ax - CLONE_X[i] * W * 1.55;
-    return clamp(x, W * 0.08, W * 0.92);
-  }
-
-  updateClones(dt, time) {
-    const cl = this.clone;
-    if (!cl.on) {
-      for (let i = 0; i < 4; i++) Post.clone(i, CLONE_X[i] * window.innerWidth, 0, 0, CLONE_S[i]);
-      return;
-    }
-    Post.clAnchor = cl.ax;
-    cl.t += dt;
-    const W = window.innerWidth;
-    if (cl.t > cl.life - 0.6) {
-      // dismissed clones pop one by one
-      cl.popT = (cl.popT || 0) - dt;
-      if (cl.popT <= 0 && cl.n > 0) {
-        const px = this.clonePos(cl.n - 1), py = window.innerHeight * (1 - 0.45 * CLONE_S[cl.n - 1]);
-        this.puff(px, py, 6, 1, 0.6);
-        this.ctx.overlay.smoke(px, py, 14, 1.3, { spread: 1.3 });
-        this.ctx.sfx.play('poof', 0.6);
-        cl.n--;
-        cl.popT = 0.14;
-      }
-      if (cl.n === 0) cl.on = false;
-    }
-    for (let i = 0; i < 4; i++) {
-      Post.clone(i, this.clonePos(i) - cl.ax + Math.sin(time * 1.6 + i * 1.7) * 9, 0, i < cl.n ? 1 : 0, CLONE_S[i]);
-    }
-    if (cl.n > 0) this.ctx.sfx.loop('hum', 0.25);
-  }
-
-  // ---------- Smoke Vanish ----------
-  smoke(c) {
-    const { overlay, sfx } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight;
-    overlay.callout('煙遁', 'Smoke Vanish');
-    sfx.play('poof', 1.4);
-    Post.afterimage(0.9, (c.x < W / 2 ? 1 : -1) * 1300);
-    Post.glitchFor(0.6);
-    Post.freeze(0.05);
-    Post.flashScreen(0.35, [0.9, 1, 0.95]);
-    Post.shake(0.5);
-    Post.aberrate(12);
-    Post.punch(1.4, c.x, c.y);
-    this.puff(c.x, c.y, 16, 1.4, 0.8);
-    overlay.sfxText('BOOF!', c.x, c.y - Math.min(W, H) * 0.3, 1.2, [80, 255, 180]);
-    // a wall of solid smoke swallows the frame while you slip away
-    const ov = this.ctx.overlay, sz = Math.min(W, H) / 450;
-    ov.smoke(c.x, c.y, 26, 2.2 * sz, { spread: 2.4, dur: 1.4 });
-    for (let k = 0; k < 6; k++) {
-      this.after(0.05 * k, () => {
-        for (let i = 0; i < 6; i++) ov.smoke(rand(-40, W + 40), rand(H * 0.1, H * 1.05), 1, rand(2.2, 3.2) * sz, { spread: 0.6, dur: 1.5 });
-      });
-    }
-    // reappear on the far side with a slash of light
-    this.after(0.55, () => {
-      const nx = c.x < W / 2 ? W * 0.78 : W * 0.22;
-      for (let i = 0; i < 46; i++) {
-        this.ctx.streaks.spawn({
-          x: rand(0, W), y: rand(0, H), vx: (nx > c.x ? 1 : -1) * rand(2500, 5000), vy: 0,
-          life: rand(0.12, 0.25), c: pick(JADE), bright: 2, width: rand(1, 3), stretch: 0.05, fade: 1,
-        });
-      }
-      this.puff(nx, c.y, 12, 1.1, 0.7);
-      this.ctx.overlay.smoke(nx, c.y, 14, 1.4, { spread: 1.5 });
-      Post.flashScreen(0.2, CH.b);
-      Post.glitchFor(0.4);
-      Post.shockwave({ x: nx, y: c.y, speed: 1300, width: 70, strength: 26, life: 0.5 });
-      this.ctx.fx.ring({ x: nx, y: c.y, r0: 20, r1: 340, dur: 0.45, width: 16, a: CH.a, b: CH.b, intensity: 1.8 });
-      sfx.play('step');
-    });
-    this.after(0.05, () => { this.vanish.on = true; this.vanish.t = 0; });
-  }
-
-  // ---------- Kunai Storm ----------
-  kunai(c, hands) {
-    const { overlay, sfx } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
-    overlay.callout('苦無', 'Kunai Storm');
-    sfx.play('kunai');
-    Post.shake(0.3);
-    Post.bloom(1);
-    const origins = [hands.L, hands.R].filter((h) => h.present).map((h) => ({ x: h.cx, y: h.cy }));
-    if (!origins.length) origins.push({ x: c.x, y: c.y });
-    const volley = (from, count, delay) => this.after(delay, () => {
-      sfx.play('kunai');
-      for (let i = 0; i < count; i++) {
-        const o = pick(from);
-        const a = (i / count) * TAU + rand(-0.15, 0.15);
-        // targets sit on a loose ring around the middle of the screen
-        const tr = base * rand(0.18, 0.46);
-        const tx = W / 2 + Math.cos(a) * tr * 1.3, ty = H * 0.48 + Math.sin(a) * tr;
-        this.throwKunai(o.x, o.y, tx, ty, i * 0.012);
-      }
-    });
-    volley(origins, 10, 0);
-    const edges = [];
-    for (let i = 0; i < 6; i++) edges.push({ x: rand(0, W), y: i % 2 ? -30 : H + 30 });
-    volley(edges, 10, 0.28);
-    // three tagged kunai thunk in last... then all go off at once
-    const bombs = [];
-    this.after(0.62, () => {
-      sfx.play('kunai');
-      for (let i = 0; i < 3; i++) {
-        const tx = W * (0.25 + i * 0.25) + rand(-30, 30), ty = H * rand(0.3, 0.55);
-        const o = pick(origins);
-        bombs.push({ x: tx, y: ty });
-        this.ctx.overlay.kunai(o.x, o.y, tx, ty, 0.16 + i * 0.03, { tag: true, hold: 1.25, size: 1.5 });
-      }
-    });
-    this.after(1.75, () => {
-      for (const b of bombs) this.explode(b.x, b.y);
-      overlay.sfxText('BOOM!', W / 2, H * 0.3, 1.5, [255, 150, 40]);
-      Post.impact(0.1, [1, 0.8, 0.5]);
-      Post.freeze(0.08);
-      Post.shake(1);
-      Post.flashScreen(0.4, [1, 0.85, 0.6]);
-      Post.bloom(2);
-      sfx.play('explode', 1.2);
-    });
-    Post.wantDim(0.3);
-  }
-
-  throwKunai(x0, y0, x1, y1, delay) {
-    this.after(delay, () => {
-      const dx = x1 - x0, dy = y1 - y0, d = Math.hypot(dx, dy) || 1;
-      const sp = rand(2200, 3200), life = d / sp;
-      this.ctx.overlay.kunai(x0, y0, x1, y1, life, { hold: rand(1.1, 1.8), size: rand(0.9, 1.25) });
-      this.after(life, () => {
-        this.ctx.fx.ring({ x: x1, y: y1, r0: 4, r1: 70, dur: 0.28, width: 6, a: CH.a, b: CH.b, intensity: 1.4 });
-        this.ctx.fx.glow({ x: x1, y: y1, s0: 20, s1: 110, dur: 0.2, a: CH.a, b: [1, 1, 1], intensity: 2 });
-        for (let i = 0; i < 7; i++) this.spark(x1, y1, rand(0, TAU), rand(150, 550), { life: rand(0.15, 0.35), width: 2 });
-        Post.shake(0.04);
-        Post.shockwave({ x: x1, y: y1, speed: 700, width: 30, strength: 8, life: 0.3 });
-        if (Math.random() < 0.35) this.ctx.sfx.play('crack');
-      });
-    });
-  }
-
-  // ---------- Substitution (Kawarimi) ----------
-  // A heavy log drops where you stood, bounces on the floor (or your
-  // shoulders), and bursts into real, tumbling splinters as you vanish.
-  substitute(c) {
-    const { overlay, sfx } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight;
-    const l = this.log;
-    l.on = true; l.t = 0; l.x = clamp(c.x, W * 0.22, W * 0.78); l.y = -140; l.vy = 0; l.vx = rand(-60, 60); l.rot = rand(-0.5, 0.5); l.vr = rand(-2, 2);
-    l.bounced = 0; l.boom = false; l.len = Math.min(W, H) * 0.62; l.w = Math.min(W, H) * 0.15;
-    overlay.callout('変わり身', 'Substitution', { big: true, dur: 1.5 });
-    sfx.play('whoomp');
-    Post.afterimage(0.8, (c.x < W / 2 ? 1 : -1) * 900);
-    Post.glitchFor(0.4);
-    Post.flashScreen(0.2, [0.9, 1, 0.95]);
-    // you are already gone: smoke where you stood
-    overlay.smoke(l.x, H * 0.62, 26, 2.4 * Math.min(W, H) / 450, { spread: 2.2 });
-  }
-
-  updateLog(dt, time) {
-    const l = this.log;
-    if (!l.on) return;
-    const { overlay, sfx, phys } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight, floor = H * 0.7;
-    l.t += dt;
-    if (!l.boom) {
-      l.vy += 3200 * dt;
-      l.y += l.vy * dt; l.x += l.vx * dt; l.rot += l.vr * dt;
-      if (l.y > floor && l.vy > 0) {
-        l.y = floor; l.vy *= -0.36; l.vr = rand(-5, 5); l.bounced++;
-        Post.shake(0.6); Post.freeze(0.05); Post.shockwave({ x: l.x, y: H * 0.72, speed: 1200, width: 70, strength: 24, life: 0.5 });
-        sfx.play('thud'); sfx.play('crack');
-        overlay.smoke(l.x, H * 0.72, 8, 1.5, { spread: 1.8 });
-        if (l.bounced >= 2 || Math.abs(l.vy) < 200) this.after(0.12, () => this.logBurst());
-      }
-      overlay.setLog({ x: l.x, y: l.y, rot: l.rot, len: l.len, w: l.w, a: 1 });
-    }
-  }
-
-  logBurst() {
-    const l = this.log, { overlay, sfx, phys, fx } = this.ctx;
-    if (l.boom) return;
-    l.boom = true;
-    const H = window.innerHeight;
-    Post.impact(0.1, [1, 0.95, 0.85]);
-    Post.shake(1); Post.freeze(0.08); Post.aberrate(10);
-    Post.shockwave({ x: l.x, y: l.y, speed: 1700, width: 100, strength: 44, life: 0.7 });
-    fx.ring({ x: l.x, y: l.y, r0: 10, r1: 420, dur: 0.45, width: 24, a: [1, 0.7, 0.35], b: [1, 1, 0.9], noise: 0.12, intensity: 1.8 });
-    phys.blast(l.x, l.y, 500, 2600);
-    phys.burst(l.x, l.y, 36, 'wood', { speed: 1500, size: 15, stretch: 3.2, up: 500 });
-    phys.burst(l.x, l.y, 14, 'wood', { speed: 800, size: 30, stretch: 1.4, up: 300 });
-    overlay.smoke(l.x, l.y, 18, 2, { spread: 2.2 });
-    overlay.sfxText('POOF!', l.x, l.y - 130, 1.3, [255, 220, 150]);
-    sfx.play('explode', 0.8); sfx.play('poof', 1.2);
-    for (let i = 0; i < 40; i++) this.spark(l.x, l.y, rand(0, TAU), rand(500, 1800), { c: [1, 0.85, 0.5], life: rand(0.2, 0.5) });
-    l.on = false;
-    this.ctx.onMove(6);
-  }
-
-  explode(x, y) {
-    const { fx, phys } = this.ctx;
-    phys.blast(x, y, 420, 1500);
-    phys.burst(x, y, 18, 'rock', { speed: 1300, size: 10, up: 450, hot: 0.7 });
-    const FIRE = [[1, 0.55, 0.12], [1, 0.8, 0.3], [1, 0.35, 0.05]];
-    fx.glow({ x, y, s0: 40, s1: 520, dur: 0.45, a: [1, 0.45, 0.1], b: [1, 0.95, 0.7], intensity: 2.6 });
-    fx.ring({ x, y, r0: 20, r1: 420, dur: 0.5, width: 30, a: [1, 0.5, 0.1], b: [1, 0.9, 0.6], noise: 0.15, intensity: 2 });
-    Post.shockwave({ x, y, speed: 1400, width: 90, strength: 40, life: 0.7 });
-    for (let i = 0; i < 60; i++) {
-      const a = rand(0, TAU), s = rand(300, 1500);
-      this.ctx.streaks.spawn({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 1.8, grav: 500, life: rand(0.3, 0.8), c: pick(FIRE), bright: 2.2, width: rand(2, 4), stretch: 0.04, fade: 1.2 });
-    }
-    // dark smoke after the fireball
-    this.after(0.12, () => this.ctx.overlay.smoke(x, y, 12, 1.5, { spread: 1.6, tint: [70, 66, 62], dur: 1.3 }));
-  }
-
-  // ---------- Shadow Binding ----------
-  bind(c, hands) {
-    const { overlay, sfx } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight;
-    const b = this.bindS;
-    b.on = true; b.t = 0; b.squeezed = false;
-    b.x = clamp(c.x, W * 0.2, W * 0.8); b.y = clamp(c.y, H * 0.25, H * 0.75);
-    b.tr.forEach((tr, i) => {
-      const f = (i + 0.5) / b.tr.length;
-      tr.ex = f < 0.5 ? lerp(-40, W * 0.45, f * 2) : lerp(W * 0.55, W + 40, (f - 0.5) * 2);
-      tr.ey = H + 30 - (Math.abs(f - 0.5) > 0.35 ? rand(0, H * 0.35) : 0);
-      tr.ph = rand(0, TAU); tr.amp = rand(90, 190) * (i % 2 ? 1 : -1); tr.delay = i * 0.03;
-      tr.trail.width = 34;
-    });
-    overlay.callout('影縛', 'Shadow Binding', { big: true, dur: 1.6 });
-    sfx.play('whoomp');
-    Post.wantDim(0.4);
-    Post.freeze(0.06);
-    Post.glitchFor(0.4);
-  }
-
-  updateBind(dt, time) {
-    const b = this.bindS;
-    if (!b.on) return;
-    b.t += dt;
-    const { fx, sfx, overlay } = this.ctx;
-    const TRAVEL = 0.6;
-    const paths = [];
-    const fadeK = clamp((2.2 - b.t) / 0.5, 0, 1);
-    const SEG = 24, NSEG = 34;
-    b.tr.forEach((tr, i) => {
-      if (!tr.chain || b.t < dt * 1.5) tr.chain = Array.from({ length: NSEG }, () => [tr.ex, tr.ey]);
-      const s = clamp((b.t - tr.delay) / TRAVEL, 0, 1);
-      const e = easeOutCubic(s);
-      const nx = -(tr.ey - b.y), ny = tr.ex - b.x, nl = Math.hypot(nx, ny) || 1;
-      // the head flies in along a wobbling line, then coils tighter and tighter
-      let hx, hy;
-      if (b.squeezed) {
-        const sq = clamp((b.t - TRAVEL - 0.08) / 0.35, 0, 1);
-        const a = tr.ph + (b.t - TRAVEL) * 7 * (i % 2 ? 1 : -1);
-        const r = 150 * (1 - sq * 0.8) + i * 3;
-        hx = b.x + Math.cos(a) * r; hy = b.y + Math.sin(a) * r * 0.85;
-      } else {
-        const wob = Math.sin(s * 9 + tr.ph + time * 5) * tr.amp * 0.5 * (1 - e);
-        hx = lerp(tr.ex, b.x, e) + (nx / nl) * wob; hy = lerp(tr.ey, b.y, e) + (ny / nl) * wob;
-      }
-      const C = tr.chain;
-      C[0][0] = hx; C[0][1] = hy;
-      for (let j = 1; j < NSEG; j++) {
-        const dx = C[j][0] - C[j - 1][0], dy = C[j][1] - C[j - 1][1] + 220 * dt, d = Math.hypot(dx, dy) || 1;
-        C[j][0] = C[j - 1][0] + (dx / d) * SEG; C[j][1] = C[j - 1][1] + (dy / d) * SEG;
-      }
-      paths.push({ pts: C.map((p) => [p[0], p[1]]), w: 26, taper: 0.9 });
-    });
-    this.ctx.overlay.setInk({ paths, col: CH.a, a: fadeK, pool: { x: b.x, y: b.y, r: 160 * clamp(b.t / TRAVEL, 0, 1), flat: 0.8 } });
-    if (b.t < TRAVEL) {
-      Post.wantDim(0.4 + 0.3 * (b.t / TRAVEL));
-      Post.wantZoom(0.04 * (b.t / TRAVEL), b.x, b.y);
-    }
-    if (!b.squeezed && b.t >= TRAVEL + 0.08) {
-      b.squeezed = true;
-      const diag = Math.hypot(window.innerWidth, window.innerHeight);
-      fx.ring({ x: b.x, y: b.y, r0: diag * 0.4, r1: 10, dur: 0.3, width: 26, a: CH.a, b: CH.b, intensity: 2.2 });
-      this.after(0.3, () => {
-        Post.impact(0.1, CH.b);
-        Post.flashScreen(0.55, CH.b);
-        Post.freeze(0.1);
-        Post.shake(0.9);
-        Post.punch(2, b.x, b.y);
-        Post.aberrate(14);
-        Post.bloom(2);
-        Post.shockwave({ x: b.x, y: b.y, speed: 1500, width: 90, strength: 44, life: 0.8 });
-        fx.glow({ x: b.x, y: b.y, s0: 60, s1: diag * 0.7, dur: 0.45, a: CH.a, b: [1, 1, 1], intensity: 3 });
-        fx.ring({ x: b.x, y: b.y, r0: 10, r1: diag * 0.6, dur: 0.6, width: 30, a: CH.a, b: CH.b, intensity: 2 });
-        overlay.sfxText('影縛!', b.x, b.y - 200, 1.1, [80, 255, 180]);
-        for (let i = 0; i < 140; i++) this.spark(b.x, b.y, rand(0, TAU), rand(500, 2000), { life: rand(0.3, 0.7), width: rand(2, 4) });
-        sfx.play('collapse');
-        sfx.play('explode', 0.7);
-      });
-    }
-    if (b.t > 2.2) b.on = false;
-    overlay.letterbox(clamp(1.4 - b.t, 0, 1));
-  }
-
-  // ---------- Grand Eclipse ----------
-  eclipse(c, hands) {
-    const { overlay, sfx } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight, base = Math.min(W, H);
-    const e = this.ecl;
-    e.on = true; e.t = 0; e.x = W / 2; e.y = H * 0.36; e.r = base * 0.23; e.rays = 0; e.total = false;
-    overlay.callout('影蝕', 'Grand Eclipse', { big: true, dur: 2.2 });
-    sfx.play('awaken');
-    Post.freeze(0.08);
-    // the whole squad joins the eclipse
-    this.clone.on = true; this.clone.t = 0; this.clone.life = 5.2; this.clone.n = 4; this.clone.popT = 0;
-    this.clone.ax = clamp(c.x, W * 0.3, W * 0.7); Post.clAnchor = this.clone.ax;
-    for (let i = 0; i < 4; i++) this.ctx.overlay.smoke(this.clonePos(i), H * 0.7, 10, 1.3, { spread: 1.3 });
-  }
-
-  updateEclipse(dt, time) {
-    const e = this.ecl;
-    if (!e.on) {
-      if (e.lens) e.lens.strength = 0;
-      e.glow.intensity = 0;
-      return;
-    }
-    e.t += dt;
-    const { fx, sfx, overlay } = this.ctx;
-    const W = window.innerWidth, H = window.innerHeight, diag = Math.hypot(W, H);
-    const RISE = 1.2, HOLDT = 3.4, END = 4.4;
-    const rise = easeOutCubic(clamp(e.t / RISE, 0, 1));
-    const fall = clamp((END - e.t) / (END - HOLDT), 0, 1);
-    const vis = rise * (e.t > HOLDT ? fall : 1);
-    const R = e.r * vis;
-    if (e.lens) {
-      e.lens.x = e.x; e.lens.y = e.y; e.lens.radius = Math.max(R * 0.35, 1); e.lens.strength = R > 2 ? 0.5 : 0; e.lens.horizon = R; e.lens.seed = 0;
-    }
-    const total = e.t > RISE;
-    e.glow.set(e.x, e.y, R * (total ? 6 : 4) + 10);
-    e.glow.param(2.2, 0, 0, 0);
-    e.glow.intensity = (0.3 + (total ? 0.9 : rise * 0.4) + Math.sin(time * 9) * 0.05) * vis;
-    e.glow.tick(time);
-    Post.wantDim(0.85 * vis);
-    Post.wantEdge(0.7 * vis, CH.a);
-    if (total) Post.wantAura(1.1 * fall, CH.a, CH.b);
-    Post.wantZoom(0.05 * vis, e.x, e.y);
-    Post.shake(dt * 0.6 * vis);
-    overlay.letterbox(vis);
-    sfx.loop('drone', 0.8 * vis);
-    sfx.loop('hum', 0.5 * vis);
-    if (!e.total && e.t >= RISE) {
-      e.total = true;
-      Post.impact(0.14, CH.b);
-      Post.flashScreen(0.7, CH.b);
-      Post.shake(1);
-      Post.freeze(0.12);
-      Post.punch(2.4, e.x, e.y);
-      Post.aberrate(16);
-      Post.bloom(2.4);
-      Post.glitchFor(0.8);
-      Post.shockwave({ x: e.x, y: e.y, speed: 1800, width: 120, strength: 56, life: 1.0 });
-      fx.ring({ x: e.x, y: e.y, r0: R, r1: diag * 0.8, dur: 0.9, width: 40, a: CH.a, b: CH.b, noise: 0.12, intensity: 2.4 });
-      fx.glow({ x: e.x, y: e.y, s0: R, s1: diag, dur: 0.6, a: CH.a, b: [1, 1, 1], intensity: 3 });
-      for (let i = 0; i < 200; i++) this.spark(e.x, e.y, rand(0, TAU), rand(700, 2600), { life: rand(0.4, 0.9), width: rand(2, 4) });
-      sfx.play('nova');
-    }
-    // shadow floods the floor and reaches up the walls
-    {
-      const paths = [];
-      for (let i = 0; i < 10; i++) {
-        const x0 = (i + 0.5) / 10 * W, h = H * (0.35 + 0.35 * Math.abs(Math.sin(i * 2.3))) * rise;
-        const pts = [];
-        for (let j = 0; j <= 16; j++) {
-          const f = j / 16;
-          pts.push([x0 + Math.sin(f * 6 + time * 2.4 + i) * 30 * f, H + 20 - h * f]);
-        }
-        paths.push({ pts, w: 34, taper: 0.95 });
-      }
-      overlay.setInk({ paths, col: CH.a, a: vis, pool: { x: W / 2, y: H * 1.02, r: W * 0.75 * rise, flat: 0.4 } });
-    }
-    // corona rays spinning off the moon
-    if (vis > 0.2) {
-      const n = Math.floor((total ? 150 : 50) * vis * dt + Math.random());
-      for (let i = 0; i < n; i++) {
-        const a = rand(0, TAU) + time * 0.6;
-        this.spark(e.x + Math.cos(a) * R, e.y + Math.sin(a) * R, a, rand(500, 1300), { life: rand(0.3, 0.7), width: rand(1.5, 3.5), drag: 0.6, stretch: 0.07 });
-      }
-    }
-    if (e.t >= END) { e.on = false; this.clone.life = Math.min(this.clone.life, this.clone.t + 0.6); }
+  dbg() {
+    const H = this.lastHands;
+    return { spd: H ? [H.L.present ? H.L.speed.toFixed(1) : '-', H.R.present ? H.R.speed.toFixed(1) : '-'].join('/') : '', slot: this.chi.slot, seal: this.seals.info ? this.seals.info.sign : null, clones: this.clone.on ? this.clone.n : 0, ras: this.ras.ph + ':' + this.ras.k.toFixed(2), chi: this.chi.ph + ':' + this.chi.k.toFixed(2), fire: this.fire.ph };
   }
 }
