@@ -150,9 +150,9 @@ export function createParticles(canvas, N) {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-  const view = { w: 1, h: 1, dpr: 1, worldH: 1, pxToWorld: 1 };
+  const view = { w: 1, h: 1, dpr: 1, worldH: 1, pxToWorld: 1, quality: 1 };
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, innerWidth < 760 ? 1.75 : 1.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, innerWidth < 760 ? 1.75 : 1.5) * view.quality;
     const w = innerWidth, h = innerHeight;
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
@@ -171,6 +171,7 @@ export function createParticles(canvas, N) {
 
   return {
     N, rnd, view, resize,
+    setQuality(q) { view.quality = q; resize(); },
     setPair(shapeA, shapeB) {
       if (shapeA !== a) { upload(B.posA, shapeA.pos); upload(B.colA, shapeA.col); a = shapeA; }
       if (shapeB !== b) { upload(B.posB, shapeB.pos); upload(B.colB, shapeB.col); b = shapeB; }

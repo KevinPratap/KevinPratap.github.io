@@ -1,6 +1,6 @@
-import { createParticles } from './particles.js?v=174205';
-import * as SH from './shapes.js?v=174205';
-import { sound, soundWanted } from './audio.js?v=174205';
+import { createParticles } from './particles.js?v=174413';
+import * as SH from './shapes.js?v=174413';
+import { sound, soundWanted } from './audio.js?v=174413';
 
 const html = document.documentElement;
 const $ = (s, r = document) => r.querySelector(s);
@@ -210,8 +210,23 @@ function uniformsFor(a, shape) {
   return { cen, sca, mot: m.mot, look: [size, m.look[1], m.look[2], m.look[3]], add: m.add, bg: m.bg };
 }
 
+// adaptive quality: if this machine can't hold ~50fps, render at a lower
+// resolution. Particle count never changes, so images keep every row.
+const perf = { last: 0, acc: 0, n: 0, steps: 0 };
+function watchPerf(now) {
+  if (!P || intro.on || document.hidden) { perf.last = now; return; }
+  const dt = now - (perf.last || now); perf.last = now;
+  if (dt > 0 && dt < 250) { perf.acc += dt; perf.n++; }
+  if (perf.acc > 2500) {
+    const fps = 1000 * perf.n / perf.acc;
+    if (fps < 50 && perf.steps < 3) { perf.steps++; P.setQuality([1, 0.8, 0.66, 0.55][perf.steps]); }
+    perf.acc = 0; perf.n = 0;
+  }
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
+  watchPerf(now);
   if (lenis) lenis.raf(now);
   hud();
   const time = now / 1000;
