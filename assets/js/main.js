@@ -1,6 +1,6 @@
-import { createParticles } from './particles.js';
-import * as SH from './shapes.js';
-import { sound, soundWanted } from './audio.js';
+import { createParticles } from './particles.js?v=174205';
+import * as SH from './shapes.js?v=174205';
+import { sound, soundWanted } from './audio.js?v=174205';
 
 const html = document.documentElement;
 const $ = (s, r = document) => r.querySelector(s);
