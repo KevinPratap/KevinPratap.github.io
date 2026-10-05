@@ -4,31 +4,17 @@ Portfolio of Kevin Pratap Sidhu: motion designer and AI engineer, Mumbai.
 
 Live: https://kevinpratap.github.io/ · Plain, print-friendly version: https://kevinpratap.github.io/print/ · Cast: https://kevinpratap.github.io/cast/
 
-## What is on the page
+## How it works
 
-The site is one story told as a radio transmission, ten channels long.
+The whole page is one WebGL canvas holding one cloud of about 110,000 particles (fewer on phones). The particles are always morphing between two shapes, and scroll position decides which two and how far along:
 
-- **CH 00 Gate.** Dead static. Hold to tune in; the hold also switches on the sound.
-- **CH 01 Hero.** A WebGL field of flowing signal contours with the name drawn into it. The cursor warps the field.
-- **CH 02 Reel.** Every screenshot on a curved WebGL ribbon. Scroll moves it; scroll speed ripples it and splits its colour.
-- **CH 03 Noise.** The problems, decoded in and then jammed back into noise.
-- **CH 04 Filters.** Six design rules applied one by one to a deliberately broken LedgerDesk card.
-- **CH 05 Transmissions.** Four case studies with clip-path image reveals, a light/dark sweep, a phone fan and an analyst loupe.
-- **CH 06 Systems.** Live diagrams of the lead pipeline, agentic workflows, Nebula and Cast, with packets and quality gates.
-- **CH 07 Volume.** 290 dots for 290 shipped sites.
-- **CH 08 Spectrum.** Fourteen side projects on a tuner, with hover previews.
-- **CH 09 On air.** Cast, with a 21-point hand cycling through real signs.
-- **CH 10 Transmit.** Contact.
+your name → a neural constellation → each project screenshot (sampled from its real pixels) → three client sites → a flowing data pipeline → a hand (Cast) → a galaxy behind the project list → a ring around the email.
 
-## How it is built
+Every shape is anchored to a real element on the page (`data-anchor`), so the particles sit exactly where the layout puts them and scroll with it. When a screenshot's particles have fully arrived, the real image condenses on top; hovering an image opens a hole that shows the particles underneath.
 
-No framework, no build step. `index.html`, `assets/css/site.css` and ES modules in `assets/js/`:
+- `assets/js/particles.js` the engine: one draw call, A/B morph with per-particle delay and curl, cursor repulsion, premultiplied blending that can be normal or additive per shape
+- `assets/js/shapes.js` shape bakers: text, images, constellation, ribbon, hand, galaxy, ring
+- `assets/js/main.js` anchors, scroll mapping, word reveals, HUD, cursor
+- `assets/js/audio.js` sound, all synthesized: a pad that changes chord per section, wind that rises while particles are in flight, bells when images settle
 
-- `signal.js` hero shader (static → contour field), name rendered to a texture from the real DOM layout
-- `reel.js` raw WebGL ribbon, one subdivided mesh drawn per card
-- `systems.js` canvas node graphs
-- `hand.js` the 21-point hand
-- `audio.js` every sound, synthesized with the Web Audio API (noise bed, drone that changes chord per chapter, ticks, FM chime, data chirps, tuner tones)
-- `main.js` choreography: GSAP ScrollTrigger and Lenis (vendored in `assets/vendor/`)
-
-Fonts (Geist, Geist Mono, Instrument Serif) are self-hosted in `assets/fonts/`. Respects `prefers-reduced-motion`, works without WebGL, and readable without JavaScript.
+No framework, no build step. Lenis for smooth scroll (vendored). Fonts self-hosted. Works without WebGL (images and text show normally), respects reduced motion, readable without JavaScript.

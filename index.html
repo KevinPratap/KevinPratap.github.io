@@ -5,431 +5,215 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kevin Pratap Sidhu — Motion designer and AI engineer</title>
 <meta name="description" content="Kevin Pratap Sidhu designs and builds interfaces, motion and AI systems for products that do not exist yet. Mumbai.">
-<meta name="theme-color" content="#08080a">
+<meta name="theme-color" content="#07070b">
 <meta property="og:title" content="Kevin Pratap Sidhu — Motion designer and AI engineer">
-<meta property="og:description" content="I design interfaces for products that do not exist yet, then build them.">
+<meta property="og:description" content="I design interfaces for products that do not exist yet. Then I build them.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kevinpratap.github.io/">
 <meta property="og:image" content="https://kevinpratap.github.io/assets/img/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2308080a'/%3E%3Cpath d='M10 34h8l4-14 6 26 6-30 6 24 4-6h10' fill='none' stroke='%23ff4d1a' stroke-width='4' stroke-linejoin='round' stroke-linecap='round'/%3E%3Ccircle cx='52' cy='34' r='4' fill='%23d4ff3a'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307070b'/%3E%3Cg fill='%23f2efe9'%3E%3Ccircle cx='20' cy='22' r='3'/%3E%3Ccircle cx='32' cy='18' r='3'/%3E%3Ccircle cx='44' cy='24' r='3'/%3E%3Ccircle cx='24' cy='38' r='3'/%3E%3Ccircle cx='40' cy='42' r='3'/%3E%3C/g%3E%3Ccircle cx='32' cy='31' r='4' fill='%23d4ff3a'/%3E%3C/svg%3E">
 <link rel="preload" href="assets/fonts/geist-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="assets/fonts/geist-mono-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@700&text=%E5%BF%B5%E5%BD%B1%E7%84%A1%E6%B0%97%E9%8B%BC%E9%AD%94%E7%82%8E%E9%9B%B7&display=swap" rel="stylesheet">
+<link rel="preload" href="assets/fonts/instrument-serif-latin-400-italic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/css/site.css">
 <script>document.documentElement.classList.replace('no-js','js');</script>
 </head>
 <body>
 
-<a class="skip" href="#reel">Skip to content</a>
+<a class="skip" href="#work">Skip to work</a>
+<canvas class="gl" aria-hidden="true"></canvas>
+<div class="cursor" aria-hidden="true"><i class="c-dot"></i><i class="c-ring"><b class="c-label"></b></i></div>
 
-<div class="cursor" aria-hidden="true"><i class="cursor-dot"></i><i class="cursor-ring"><b class="cursor-label"></b></i></div>
-
-<!-- ───────────── HUD ───────────── -->
-<header class="hud" aria-label="Site">
-  <a class="hud-mark" href="#top" aria-label="Back to top">
-    <svg viewBox="0 0 64 24" aria-hidden="true"><path d="M2 13h7l3-9 5 16 5-18 5 15 3-4h7" /><circle cx="44" cy="13" r="2.6" /></svg>
-    <span>KPS</span>
-  </a>
-  <p class="hud-ch" aria-live="polite"><span class="hud-ch-num">CH 01</span><span class="hud-ch-label">Kevin Pratap Sidhu</span></p>
-  <button class="hud-sound" type="button" aria-pressed="false" aria-label="Sound" data-cursor="Sound">
-    <canvas class="hud-scope" width="88" height="28" aria-hidden="true"></canvas>
-    <span class="hud-sound-label">Sound off</span>
+<header class="hud">
+  <a class="hud-name" href="#top">Kevin Pratap Sidhu</a>
+  <p class="hud-now" aria-hidden="true"><span class="hf-idx">01</span><span class="hf-label">Hello</span></p>
+  <nav class="hud-nav" aria-label="Sections">
+    <a href="#work">Work</a><a href="#systems">Systems</a><a href="#cast">Cast</a><a href="#contact">Contact</a>
+  </nav>
+  <button class="sound" type="button" aria-pressed="false">
+    <span class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="sound-label">Sound</span>
   </button>
 </header>
-<div class="hud-freq" aria-hidden="true"><span>FREQ</span><b class="hud-freq-val">87.5</b><span>MHz</span></div>
-<div class="hud-rail" aria-hidden="true"><i class="hud-rail-fill"></i></div>
-
-<!-- ───────────── GATE ───────────── -->
-<div class="gate" id="gate" aria-hidden="true">
-  <div class="gate-top">
-    <span>CH 00</span>
-    <span class="gate-status">No signal</span>
-  </div>
-  <div class="gate-center">
-    <button class="gate-dial" type="button" aria-label="Hold to tune in">
-      <svg viewBox="0 0 200 200" aria-hidden="true">
-        <defs><linearGradient id="dialg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff4d1a"/><stop offset=".5" stop-color="#ff2e88"/><stop offset="1" stop-color="#6a3dff"/></linearGradient></defs>
-        <circle class="dial-track" cx="100" cy="100" r="88" />
-        <circle class="dial-prog" cx="100" cy="100" r="88" pathLength="1" />
-        <g class="dial-ticks"></g>
-      </svg>
-      <span class="dial-word">Hold</span>
-    </button>
-    <p class="gate-hint"><span class="gate-hint-main">Hold to tune in</span><span class="gate-hint-sub">Press and hold, or hold <kbd>Space</kbd>. Sound comes on with it.</span></p>
-  </div>
-  <div class="gate-bottom">
-    <p class="gate-readout"><span>FREQ <b class="gr-freq">87.5</b></span><span>SNR <b class="gr-snr">−24</b> dB</span></p>
-    <button class="gate-skip" type="button">Enter without sound</button>
-  </div>
-</div>
+<div class="hud-line" aria-hidden="true"><i class="hf-line"></i></div>
 
 <main id="top">
 
-<!-- ───────────── CH 01 HERO ───────────── -->
-<section class="hero" id="hero" data-ch="01" data-label="Kevin Pratap Sidhu" data-chord="hero">
-  <canvas class="signal" id="signal" aria-hidden="true"></canvas>
-  <p class="hero-roles" aria-hidden="true"><span>Motion design</span><span>Interfaces</span><span>AI systems</span></p>
-  <h1 class="hero-name"><span class="w">Kevin</span> <span class="w">Pratap</span><br class="br-d"> <span class="w">Sidhu<em>.</em></span></h1>
-  <div class="hero-foot">
-    <p class="hero-lede">Motion designer and AI engineer. I design interfaces for products that do not exist yet, <span class="serif">then build them.</span></p>
-    <dl class="hero-meta">
-      <div><dt>Based</dt><dd>Mumbai, India</dd></div>
-      <div><dt>Builds</dt><dd>Motion, interfaces, agents</dd></div>
-      <div><dt>Status</dt><dd><span class="dot" aria-hidden="true"></span> Taking projects</dd></div>
-    </dl>
-    <p class="hero-cue" aria-hidden="true"><span>Scroll to receive</span><i></i></p>
-  </div>
-</section>
-
-<div class="marquee" aria-hidden="true" data-speed="1">
-  <div class="marquee-track"><span>Motion designer</span><i></i><span class="o">AI engineer</span><i></i><span>Interface builder</span><i></i><span class="o">Signal over noise</span><i></i></div>
-</div>
-
-<!-- ───────────── CH 02 REEL ───────────── -->
-<section class="reel" id="reel" data-ch="02" data-label="Reel" data-chord="cases">
-  <div class="reel-pin">
-    <canvas class="reel-gl" aria-hidden="true"></canvas>
-    <div class="reel-head wrap">
-      <p class="label">Selected work, 2025 to 2026</p>
-      <p class="reel-count"><b class="reel-idx">01</b><span>/ 11</span></p>
+  <section class="hero" data-label="Hello">
+    <p class="hero-kicker" data-reveal><span>Motion designer</span><span class="dot"></span><span>AI engineer</span><span class="dot"></span><span>Mumbai</span></p>
+    <h1 class="hero-name" data-anchor="name" data-shape="name"><span class="w">Kevin</span> <span class="w">Pratap</span><br class="brd"> <span class="w">Sidhu</span></h1>
+    <div class="hero-foot">
+      <button class="sound-cta" type="button"><span class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Turn on sound, it moves with you</button>
+      <p class="hero-scroll"><span>Scroll</span><i></i></p>
     </div>
-    <div class="reel-caption wrap" aria-hidden="true">
-      <p class="reel-title">LedgerDesk</p>
-      <p class="reel-sub">Document operations platform</p>
-    </div>
-    <div class="reel-progress" aria-hidden="true"><i></i></div>
-    <ul class="reel-fallback wrap" aria-label="Work reel">
-      <li><img src="assets/img/ledgerdesk-dark.webp" alt="LedgerDesk admin dashboard, dark theme" loading="lazy" width="1280" height="800"></li>
-      <li><img src="assets/img/trippin-web.webp" alt="Tripp'in AI web app" loading="lazy" width="1280" height="900"></li>
-      <li><img src="assets/img/godseye.webp" alt="God's Eye View console" loading="lazy" width="1280" height="720"></li>
-      <li><img src="assets/img/aitools.webp" alt="AI Tools Directory" loading="lazy" width="1280" height="900"></li>
-    </ul>
-  </div>
-</section>
+  </section>
 
-<!-- ───────────── CH 03 NOISE ───────────── -->
-<section class="noise" id="noise" data-ch="03" data-label="Noise" data-chord="noise">
-  <div class="noise-pin">
-    <p class="label">What I keep walking into</p>
-    <ol class="noise-lines">
-      <li>Six document states in the data. None of them on screen.</li>
-      <li>One font size doing eight jobs.</li>
-      <li>Every card shouting at the same volume.</li>
-      <li>Colour used as decoration.</li>
-      <li>Twelve hundred equal cards and no way to narrow them down.</li>
-    </ol>
-    <p class="noise-verdict">
-      <span class="nv-a">That is noise.</span>
-      <span class="nv-b">I design by <em>taking it out</em>,</span>
-      <span class="nv-c">then I build what is left.</span>
-    </p>
-    <div class="noise-meter" aria-hidden="true"><span>Noise floor</span><i class="nm-bar"><b></b></i><span class="nm-val">−6 dB</span></div>
-  </div>
-</section>
-
-<!-- ───────────── CH 04 FILTERS ───────────── -->
-<section class="filters block-flare" id="filters" data-ch="04" data-label="Filters" data-chord="filters">
-  <div class="filters-head wrap">
-    <p class="label">Six filters</p>
-    <h2>Rules I can defend in a review. <span class="serif">Each one came out of a screen that failed.</span></h2>
-  </div>
-  <div class="filters-pin">
-    <div class="filters-stage wrap">
-      <ol class="rules" aria-label="Design rules">
-        <li class="rule"><span class="rule-n">F1</span><div><h3>One accent, and it means tappable</h3><p>If colour is decoration it stops being information. The accent is the only saturated thing on the screen.</p></div></li>
-        <li class="rule"><span class="rule-n">F2</span><div><h3>Colour carries meaning</h3><p>A badge is red because something is wrong, not because the row looked empty.</p></div></li>
-        <li class="rule"><span class="rule-n">F3</span><div><h3>Typography does the hierarchy</h3><p>Two font sizes doing eight jobs reads as a wall. A real scale tells you what to read first.</p></div></li>
-        <li class="rule"><span class="rule-n">F4</span><div><h3>Light and dark are both designed</h3><p>Dark mode is not an inverted stylesheet. Surfaces, borders and emphasis change with it.</p></div></li>
-        <li class="rule"><span class="rule-n">F5</span><div><h3>43 pixels is not a tap target</h3><p>Controls get 44px minimum and 16px text on mobile, so iOS never zooms the input.</p></div></li>
-        <li class="rule"><span class="rule-n">F6</span><div><h3>Revise, do not stack</h3><p>Patches on top of patches produce screens nobody can reason about. If it is wrong structurally, rebuild it.</p></div></li>
-      </ol>
-
-      <div class="demo-wrap" aria-hidden="true">
-        <div class="demo-readout"><span>Filter <b class="dr-step">0</b>/6</span><span>SNR <b class="dr-snr">3</b> dB</span></div>
-        <div class="demo" data-f="0">
-          <div class="demo-patch p1">TODO: fix spacing!!</div>
-          <div class="demo-patch p2">v2 FINAL (new)</div>
-          <div class="demo-head">
-            <div>
-              <p class="d-kicker">Review queue</p>
-              <p class="d-title">Aarav's workspace</p>
-            </div>
-            <span class="d-avatar">A</span>
-          </div>
-          <div class="demo-stats">
-            <div class="d-stat"><b>1</b><span>Pending</span></div>
-            <div class="d-stat"><b>16</b><span>Punched</span></div>
-            <div class="d-stat bad"><b>1</b><span>Invalid</span></div>
-          </div>
-          <ul class="demo-rows">
-            <li><span class="d-doc">Bank statement · Mar</span><span class="d-badge b-a">Punched</span></li>
-            <li><span class="d-doc">Purchase invoice #2207</span><span class="d-badge b-b">Invalid</span></li>
-            <li><span class="d-doc">Expense batch · 7 files</span><span class="d-badge b-c">Pending</span></li>
-          </ul>
-          <div class="demo-foot">
-            <span class="d-note">1 document waiting for review</span>
-            <span class="d-btn">Start reviewing <i>→</i></span>
-            <span class="d-measure"><i></i><b>44</b></span>
-          </div>
-        </div>
-        <p class="demo-cap">A review card from LedgerDesk, rebuilt in front of you, one rule at a time.</p>
-      </div>
-    </div>
-  </div>
-  <div class="filters-tail wrap">
-    <p class="aside"><span class="label">Also</span> I write my own audit scripts, so I can tell you how a design breaks before launch instead of after. Contrast, overflow and tap targets are checked by script, not by eye.</p>
-  </div>
-</section>
-
-<!-- ───────────── CH 05 TRANSMISSIONS ───────────── -->
-<section class="cases" id="cases" data-ch="05" data-label="Transmissions" data-chord="cases">
-  <div class="cases-head wrap">
-    <p class="label">Four transmissions</p>
-    <h2>Case studies. <span class="serif">Shipped and live, not mockups.</span></h2>
-  </div>
-
-  <article class="case" id="ledgerdesk" style="--c:#18e0ff">
-    <header class="case-head wrap">
-      <span class="case-n">T—01</span>
-      <h3 class="case-title">LedgerDesk</h3>
-      <p class="case-meta">Document operations platform · 2026 · Design and front end</p>
-    </header>
-    <p class="case-intro wrap">Accounting teams were reviewing client documents through email and spreadsheets. I designed the review surface: one queue, one set of states, no ambiguity about what is done and what is not.</p>
-    <div class="case-media wrap">
-      <figure class="split reveal" data-cursor="Sweep">
-        <div class="split-frame">
-          <img src="assets/img/ledgerdesk-light.webp" width="1280" height="800" alt="LedgerDesk bookkeeper dashboard in light theme" loading="lazy" decoding="async">
-          <div class="split-dark"><img src="assets/img/ledgerdesk-dark.webp" width="1280" height="800" alt="LedgerDesk admin dashboard in dark theme" loading="lazy" decoding="async"></div>
-          <span class="split-line" aria-hidden="true"><i>Light</i><i>Dark</i></span>
-        </div>
-        <figcaption>One layout, two designed surfaces. Scroll sweeps between them.</figcaption>
-      </figure>
-    </div>
-    <dl class="pdr wrap">
-      <div><dt>Problem</dt><dd>Six document states existed in the data and none of them existed on screen. Reviewers were guessing.</dd></div>
-      <div><dt>Decision</dt><dd>Numbers carry the meaning. Pending, punched and invalid each get a value and a colour from one token table. Navigation, tables and dialogs all read from the same tokens.</dd></div>
-      <div><dt>Result</dt><dd>Light and dark share one layout. Body text checked at 4.5:1. A 16 hour review cycle became a queue with a visible end.</dd></div>
-    </dl>
-  </article>
-
-  <article class="case" id="trippin" style="--c:#ff4d1a">
-    <header class="case-head wrap">
-      <span class="case-n">T—02</span>
-      <h3 class="case-title">Tripp’in AI</h3>
-      <p class="case-meta">Travel planner · 2026 · Design system, web UI, Android UI · <a href="https://github.com/KevinPratap/Tripp-in">Source</a></p>
-    </header>
-    <p class="case-intro wrap">A travel planner that produces a fixed itinerary instead of a chat answer. The hard part was making a dense plan readable, so I gave it the visual language of a flight briefing: numbered steps, form headers, one accent, physical depth instead of shadows.</p>
-    <div class="case-media wrap trip-media">
-      <figure class="trip-web reveal">
-        <div class="frame"><img src="assets/img/trippin-web.webp" width="1280" height="900" alt="Tripp'in AI live web app" loading="lazy" decoding="async"></div>
-        <figcaption>The live web app. One system serving web and Android.</figcaption>
-      </figure>
-      <div class="trip-phones">
-        <figure class="phone"><img src="assets/img/trippin-archive.webp" width="620" height="1391" alt="Trip archive screen" loading="lazy" decoding="async"></figure>
-        <figure class="phone"><img src="assets/img/trippin-day.webp" width="620" height="1391" alt="Day plan screen, time ordered" loading="lazy" decoding="async"></figure>
-        <figure class="phone"><img src="assets/img/trippin-profile.webp" width="620" height="1391" alt="Profile and settings screen" loading="lazy" decoding="async"></figure>
-      </div>
-    </div>
-    <dl class="pdr wrap">
-      <div><dt>Problem</dt><dd>One font size did eight jobs. Colour was decoration. Every card shouted at the same volume, so nothing read as important.</dd></div>
-      <div><dt>Decision</dt><dd>I wrote the design system before touching screens: colour carries meaning and nothing else, a type scale with real steps, one accent for anything tappable.</dd></div>
-      <div><dt>Result</dt><dd>The system is enforced, not admired. Every token has a rule, a value and a contrast check, and Android and web use the same table.</dd></div>
-    </dl>
-  </article>
-
-  <article class="case" id="godseye" style="--c:#8a63ff">
-    <header class="case-head wrap">
-      <span class="case-n">T—03</span>
-      <h3 class="case-title">God’s Eye View</h3>
-      <p class="case-meta">Satellite imagery analysis console · 2026 · Interface design · Open source</p>
-    </header>
-    <p class="case-intro wrap">An analyst tool that pulls imagery for a place and a date range. Dense by necessity: coordinates, sensor metadata, capture history and the image itself all have to be visible at once without crowding each other.</p>
-    <div class="case-media wrap">
-      <figure class="loupe reveal" data-cursor="Inspect">
-        <div class="loupe-frame">
-          <img src="assets/img/godseye.webp" width="1280" height="720" alt="God's Eye View analysis console" loading="lazy" decoding="async">
-          <div class="loupe-lens" aria-hidden="true"><span class="loupe-xy">0.000 / 0.000</span></div>
-        </div>
-        <figcaption>Dark surface, fixed grid, monospace for values, sans for labels. Move over it: the loupe is how analysts use it.</figcaption>
-      </figure>
-    </div>
-    <dl class="pdr wrap">
-      <div><dt>Problem</dt><dd>Analysts cross reference numbers while looking at an image. A layout that hides either one costs them the task.</dd></div>
-      <div><dt>Decision</dt><dd>Fixed panels, no floating windows. Numeric values in monospace so they line up when scanned. One accent reserved for the active selection.</dd></div>
-      <div><dt>Result</dt><dd>A console that stays quiet while the data is loud. Readable at a glance, still readable at 2am.</dd></div>
-    </dl>
-  </article>
-
-  <article class="case" id="aitools" style="--c:#ff2e88">
-    <header class="case-head wrap">
-      <span class="case-n">T—04</span>
-      <h3 class="case-title">AI Tools Directory</h3>
-      <p class="case-meta">Public directory · 2026 · Design and build · <a href="https://kevinpratap.github.io/ai-tools-directory/">Live</a></p>
-    </header>
-    <p class="case-intro wrap">Curated AI tools, searchable and categorised. The design problem is scanning speed: a visitor arrives with a task in mind and needs categories, previews and filters without reading a paragraph first.</p>
-    <div class="case-media wrap tools-media">
-      <div class="tools-count" aria-hidden="true"><b class="count" data-to="1200">0</b><span>+ tools, still scannable</span></div>
-      <figure class="reveal">
-        <div class="frame"><img src="assets/img/aitools.webp" width="1280" height="900" alt="AI Tools Directory interface" loading="lazy" decoding="async"></div>
-        <figcaption>Category filters, one card pattern, a preview per tool. Nothing on screen competes with the listings.</figcaption>
-      </figure>
-    </div>
-    <dl class="pdr wrap">
-      <div><dt>Problem</dt><dd>Directories fail the same way: too many equal cards and no way to narrow down.</dd></div>
-      <div><dt>Decision</dt><dd>Filters above the fold, one card pattern, one accent for the interactive state, and the count always visible so a visitor knows the size of the list.</dd></div>
-      <div><dt>Result</dt><dd>A 1,200 item list that stays scannable on a phone and on a laptop.</dd></div>
-    </dl>
-  </article>
-</section>
-
-<!-- ───────────── CH 06 SYSTEMS ───────────── -->
-<section class="systems" id="systems" data-ch="06" data-label="Systems" data-chord="onair">
-  <div class="systems-head wrap">
-    <p class="label">The AI engineering side</p>
-    <h2>Systems that run <span class="serif">while nobody is watching.</span></h2>
-  </div>
-  <div class="systems-body wrap">
-    <div class="sys-tabs" role="tablist" aria-label="Systems">
-      <button role="tab" aria-selected="true" class="sys-tab" data-sys="lead" data-cursor="Run"><span>01</span>Lead pipeline</button>
-      <button role="tab" aria-selected="false" class="sys-tab" data-sys="agents" data-cursor="Run"><span>02</span>Agentic workflows</button>
-      <button role="tab" aria-selected="false" class="sys-tab" data-sys="nebula" data-cursor="Run"><span>03</span>Nebula</button>
-      <button role="tab" aria-selected="false" class="sys-tab" data-sys="cast" data-cursor="Run"><span>04</span>Cast</button>
-    </div>
-    <div class="sys-stage">
-      <canvas class="sys-gl" aria-hidden="true"></canvas>
-      <div class="sys-readout" aria-hidden="true"><span class="sr-a">packets</span><b class="sr-n">0</b></div>
-    </div>
-    <div class="sys-copy" aria-live="polite">
-      <h3 class="sys-title">Lead pipeline</h3>
-      <p class="sys-desc">Scrape local businesses, generate a site per business, deploy it, then outreach with rate limiting and an audit pass before anything sends. It shipped 290+ sites.</p>
-      <p class="sys-stack">Python · Playwright · WhatsApp API</p>
-    </div>
-  </div>
-</section>
-
-<!-- ───────────── CH 07 VOLUME ───────────── -->
-<section class="volume block-magenta" id="volume" data-ch="07" data-label="Volume" data-chord="volume">
-  <div class="volume-pin wrap">
-    <div class="volume-copy">
-      <p class="label">Client work at volume · 2025 to 2026</p>
-      <h2><b class="vol-count">0</b><span class="serif">sites for local businesses.</span></h2>
-      <p>That pipeline produced, deployed and verified small business sites. I hand finished the ones that mattered. Every page went through the same checks: mobile first, no layout shift, no decoration that carries no information.</p>
-    </div>
-    <div class="vol-grid" aria-hidden="true"></div>
-  </div>
-  <div class="vol-shots wrap">
-    <figure class="reveal"><div class="frame"><img src="assets/img/clinic.webp" width="765" height="890" alt="Dental clinic site" loading="lazy" decoding="async"></div><figcaption><b>Clinic.</b> Trust signals first: years, rating, review count.</figcaption></figure>
-    <figure class="reveal"><div class="frame"><img src="assets/img/gym.webp" width="765" height="950" alt="Gym site" loading="lazy" decoding="async"></div><figcaption><b>Gym.</b> Numbers as the hero, one accent for the calls to action.</figcaption></figure>
-    <figure class="reveal"><div class="frame"><img src="assets/img/salon.webp" width="900" height="1068" alt="Salon site" loading="lazy" decoding="async"></div><figcaption><b>Salon.</b> Service cards, booking always one tap away.</figcaption></figure>
-  </div>
-</section>
-
-<div class="marquee marquee-alt" aria-hidden="true" data-speed="-1">
-  <div class="marquee-track"><span class="o">Electron</span><i></i><span>Whisper</span><i></i><span class="o">MediaPipe</span><i></i><span>Three.js</span><i></i><span class="o">Jetpack Compose</span><i></i><span>MCP agents</span><i></i></div>
-</div>
-
-<!-- ───────────── CH 08 SPECTRUM ───────────── -->
-<section class="spectrum" id="spectrum" data-ch="08" data-label="Spectrum" data-chord="spectrum">
-  <div class="spectrum-head wrap">
-    <p class="label">Everything else shipped</p>
-    <h2>Fourteen more stations. <span class="serif">All real. Tune across them.</span></h2>
-  </div>
-  <div class="tuner wrap" aria-hidden="true">
-    <div class="tuner-scale"></div>
-    <div class="tuner-needle"><b class="tuner-freq">88.1</b></div>
-  </div>
-  <ol class="stations wrap">
-    <li class="station" data-c="#ff4d1a"><div class="st-row"><span class="st-f">88.1</span><span class="st-name">PFI field agent portal</span><span class="st-stack">Next.js · Express · PHP</span></div><div class="st-body"><p>Loan verification PWA for field agents. Mobile first, offline tolerant, admin panel for review.</p><a href="https://vfile.in/pfi-pwa/">vfile.in/pfi-pwa</a></div></li>
-    <li class="station" data-c="#ff2e88"><div class="st-row"><span class="st-f">89.6</span><span class="st-name">Machines Dealer marketplace</span><span class="st-stack">Laravel · Blade · MySQL</span></div><div class="st-body"><p>Industrial machine marketplace rebuild. Card system, stock listings, print catalogue. 18 security and SEO issues closed.</p></div></li>
-    <li class="station" data-c="#8a63ff"><div class="st-row"><span class="st-f">91.1</span><span class="st-name">Mousy</span><span class="st-stack">Electron · HTML · CSS</span></div><div class="st-body"><p>Windows desktop assistant with its own chrome instead of native dialog boxes. Custom shell, pixel pet, panel UI.</p></div></li>
-    <li class="station" data-c="#18e0ff" data-repo="saathi-android"><div class="st-row"><span class="st-f">92.6</span><span class="st-name">Saathi</span><span class="st-stack">Kotlin · Jetpack Compose</span></div><div class="st-body"><p>Companion app for elderly users. Screen capture to vision model to a Hindi overlay and speech.</p><a href="https://github.com/KevinPratap/saathi-android">github.com/KevinPratap/saathi-android</a></div></li>
-    <li class="station" data-c="#ff4d1a" data-repo="nebula-interview-ai"><div class="st-row"><span class="st-f">94.1</span><span class="st-name">Nebula Interview AI</span><span class="st-stack">Electron · Python · Whisper</span></div><div class="st-body"><p>Real time interview assistant. Frameless overlay, live transcription, runs offline.</p><a href="https://github.com/KevinPratap/nebula-interview-ai">github.com/KevinPratap/nebula-interview-ai</a></div></li>
-    <li class="station" data-c="#d4ff3a" data-repo="24-week-transformation"><div class="st-row"><span class="st-f">95.6</span><span class="st-name">24 Week Transformation</span><span class="st-stack">Next.js · PWA · cron</span></div><div class="st-body"><p>Fitness tracker with cron pushed daily content. Monochrome interface, installable as an app.</p><a href="https://github.com/KevinPratap/24-week-transformation">github.com/KevinPratap/24-week-transformation</a></div></li>
-    <li class="station" data-c="#ff2e88" data-repo="hermes-web-dashboard"><div class="st-row"><span class="st-f">97.1</span><span class="st-name">Hermes web dashboard</span><span class="st-stack">Vue · FastAPI</span></div><div class="st-body"><p>Control surface for agent sessions, cron jobs and skills. Session list, run history, live output.</p><a href="https://github.com/KevinPratap/hermes-web-dashboard">github.com/KevinPratap/hermes-web-dashboard</a></div></li>
-    <li class="station" data-c="#8a63ff" data-repo="agentic-workflows"><div class="st-row"><span class="st-f">98.6</span><span class="st-name">Agentic workflows</span><span class="st-stack">Python · MCP · orchestration</span></div><div class="st-body"><p>Production multi agent architecture. Hierarchical agents, MCP tools, cron scheduling, quality gates between stages.</p><a href="https://github.com/KevinPratap/agentic-workflows">github.com/KevinPratap/agentic-workflows</a></div></li>
-    <li class="station" data-c="#18e0ff" data-repo="mentalist-academy"><div class="st-row"><span class="st-f">100.1</span><span class="st-name">Mentalist Academy</span><span class="st-stack">Next.js 16 · Prisma · Postgres</span></div><div class="st-body"><p>Training app for observation, memory and cold reading. Illustrated lesson system, progress tracking.</p><a href="https://github.com/KevinPratap/mentalist-academy">github.com/KevinPratap/mentalist-academy</a></div></li>
-    <li class="station" data-c="#ff4d1a"><div class="st-row"><span class="st-f">101.6</span><span class="st-name">Synapse</span><span class="st-stack">Flutter · Dart</span></div><div class="st-body"><p>Study assistant that organises notes into a knowledge graph. College mini project.</p></div></li>
-    <li class="station" data-c="#ff2e88" data-repo="shorts-factory"><div class="st-row"><span class="st-f">103.1</span><span class="st-name">Shorts Factory</span><span class="st-stack">Python · ffmpeg</span></div><div class="st-body"><p>Automated short form video pipeline. Source video in, generated clips and served previews out.</p><a href="https://github.com/KevinPratap/shorts-factory">github.com/KevinPratap/shorts-factory</a></div></li>
-    <li class="station" data-c="#d4ff3a"><div class="st-row"><span class="st-f">104.6</span><span class="st-name">Lead generation pipeline</span><span class="st-stack">Python · Playwright · WhatsApp API</span></div><div class="st-body"><p>Scrape local businesses, generate a site per business, deploy, then outreach with rate limiting and an audit pass before anything sends.</p></div></li>
-    <li class="station" data-c="#8a63ff"><div class="st-row"><span class="st-f">106.1</span><span class="st-name">Content pipelines</span><span class="st-stack">Python · CDP · cron</span></div><div class="st-body"><p>Scheduled posting to LinkedIn and Instagram through browser automation, with image handling and failure recovery.</p></div></li>
-    <li class="station" data-c="#18e0ff"><div class="st-row"><span class="st-f">107.6</span><span class="st-name">AI Agents for Beginners</span><span class="st-stack">Writing · Amazon KDP</span></div><div class="st-body"><p>Self published book on Amazon, written and produced solo. 200 pages.</p><a href="https://www.amazon.com/-/e/B0H6L5ZK6V">Amazon author page</a></div></li>
-  </ol>
-  <div class="preview" aria-hidden="true"><div class="preview-in"></div></div>
-  <p class="spectrum-foot wrap">Earlier work in machine learning and computer vision lives on <a href="https://github.com/KevinPratap">GitHub</a>: CNN image recognition, face recognition attendance, real time sign language to text, housing price prediction.</p>
-</section>
-
-<!-- ───────────── CH 09 ON AIR ───────────── -->
-<section class="onair" id="onair" data-ch="09" data-label="On air: Cast" data-chord="onair">
-  <div class="onair-inner wrap">
-    <div class="onair-copy">
-      <p class="label"><span class="rec" aria-hidden="true"></span> On air now · Latest build</p>
-      <h2>Cast</h2>
-      <p class="onair-lede">Real superpowers from real hand signs, in the browser. The webcam runs through MediaPipe hand tracking on your own device, and every sign drives real particle physics and screen effects.</p>
-      <p class="onair-detail">Eight heroes, each move keyed to a specific sign rather than a generic pose. Seals survive one hand dropping out for half a second, because pressing your hands together is exactly when the tracker loses one. No build step, plain ES modules.</p>
-      <div class="onair-cta">
-        <a class="btn" href="cast/" data-cursor="Cast">Open Cast <i aria-hidden="true">→</i></a>
-        <a class="btn-ghost" href="cast/?demo&amp;auto">Demo without a camera</a>
-      </div>
-    </div>
-    <div class="onair-stage">
-      <canvas class="handcv" id="hand" aria-hidden="true"></canvas>
-      <div class="sign-card">
-        <span class="sign-glyph">念</span>
-        <dl>
-          <div><dt>Sign</dt><dd class="sign-name">Grip a hilt</dd></div>
-          <div><dt>Move</dt><dd class="sign-move">A blade ignites</dd></div>
-          <div><dt>Hero</dt><dd class="sign-hero">Orin</dd></div>
+  <section class="about hold" data-label="About">
+    <div class="hold-in about-in">
+      <div class="about-copy">
+        <p class="eyebrow" data-reveal>About</p>
+        <h2 class="big" data-words>I design interfaces for products that don’t exist yet. <em>Then I build them.</em></h2>
+        <p class="lede" data-reveal>The screens, the motion that makes them feel alive, and the AI systems running behind them. From design tokens to WebGL to multi‑agent pipelines.</p>
+        <dl class="stats" data-reveal>
+          <div><dt>290+</dt><dd>sites shipped by a pipeline I built</dd></div>
+          <div><dt>18</dt><dd>products and tools, all real</dd></div>
+          <div><dt>1</dt><dd>book on AI agents, self published</dd></div>
         </dl>
       </div>
+      <div class="about-shape" data-anchor="mind" data-shape="constellation" aria-hidden="true"></div>
     </div>
-  </div>
-  <ul class="glyph-row wrap" aria-label="Heroes in Cast">
-    <li><span lang="ja">念</span>Orin</li><li><span lang="ja">影</span>Kage</li><li><span lang="ja">無</span>Nyx</li><li><span lang="ja">気</span>Kai</li><li><span lang="ja">鋼</span>Ferrum</li><li><span lang="ja">魔</span>Mystral</li><li><span lang="ja">炎</span>Ember</li><li><span lang="ja">雷</span>Raiju</li>
-  </ul>
-</section>
+  </section>
 
-<!-- ───────────── CH 10 TRANSMIT ───────────── -->
-<section class="transmit" id="transmit" data-ch="10" data-label="Transmit" data-chord="transmit">
-  <div class="bench wrap">
-    <div>
-      <p class="label">On the bench</p>
-      <ul class="tools"><li>Motion and WebGL</li><li>GSAP</li><li>Three.js</li><li>Web Audio</li><li>Design tokens</li><li>React</li><li>Next.js</li><li>Vue</li><li>Jetpack Compose</li><li>Flutter</li><li>Electron</li><li>Python</li><li>MediaPipe</li><li>Whisper</li><li>MCP agents</li><li>Playwright</li></ul>
+  <section id="work" class="work-intro" data-label="Selected work">
+    <p class="eyebrow" data-reveal>Selected work</p>
+    <h2 class="huge" data-words>Four things <em>I shipped</em></h2>
+  </section>
+
+  <section class="proj hold" data-label="LedgerDesk">
+    <div class="hold-in proj-in">
+      <figure class="slot" data-anchor="ld" data-shape="image" style="--ar:1280/800">
+        <img src="assets/img/ledgerdesk-dark.webp" alt="LedgerDesk administrator workspace, dark theme" width="1280" height="800" decoding="async">
+      </figure>
+      <div class="proj-copy">
+        <p class="eyebrow" data-reveal><span>01</span> Document operations · 2026</p>
+        <h3 class="title" data-words>LedgerDesk</h3>
+        <p class="lede" data-reveal>Accounting teams were reviewing client documents over email and spreadsheets. I designed one queue with one set of states, and a sixteen hour review cycle became a queue with a visible end.</p>
+        <ul class="facts" data-reveal><li>Six states, one token table</li><li>Light and dark, one layout</li><li>Contrast checked at 4.5:1</li></ul>
+      </div>
     </div>
-    <div class="scale" aria-label="Type scale in use">
-      <p class="label">Type scale in use</p>
-      <p class="sc-32">Display 32</p><p class="sc-20">Title 20</p><p class="sc-15">Body 15</p><p class="sc-13">Secondary 13, muted</p><p class="sc-11">Label 11, tracked</p>
+  </section>
+
+  <section class="proj hold flip" data-label="Tripp’in AI">
+    <div class="hold-in proj-in">
+      <figure class="slot" data-anchor="trip" data-shape="image" style="--ar:1280/900">
+        <img src="assets/img/trippin-web.webp" alt="Tripp'in AI web app" width="1280" height="900" decoding="async">
+      </figure>
+      <div class="proj-copy">
+        <p class="eyebrow" data-reveal><span>02</span> Travel planner · 2026</p>
+        <h3 class="title" data-words>Tripp’in AI</h3>
+        <p class="lede" data-reveal>A planner that hands you a real itinerary instead of a chat answer, dressed as a flight briefing: numbered steps, form headers, one accent, depth instead of shadows.</p>
+        <ul class="facts" data-reveal><li>Design system before screens</li><li>Web and Android, one token table</li><li><a href="https://github.com/KevinPratap/Tripp-in">Source on GitHub</a></li></ul>
+      </div>
     </div>
-  </div>
-  <div class="tx block-acid">
-    <div class="wrap">
-      <p class="label">Transmit</p>
-      <h2 class="tx-head">Got a product that <span class="serif">does not exist yet?</span></h2>
-      <button class="tx-mail" type="button" data-mail="pratapkevin8@gmail.com" data-cursor="Copy"><span class="tx-mail-addr">pratapkevin8@gmail.com</span><span class="tx-mail-act">Copy</span></button>
-      <ul class="tx-links">
+  </section>
+
+  <section class="proj hold" data-label="God’s Eye View">
+    <div class="hold-in proj-in">
+      <figure class="slot" data-anchor="gods" data-shape="image" style="--ar:1280/720">
+        <img src="assets/img/godseye.webp" alt="God's Eye View satellite analysis console" width="1280" height="720" decoding="async">
+      </figure>
+      <div class="proj-copy">
+        <p class="eyebrow" data-reveal><span>03</span> Satellite analysis · 2026</p>
+        <h3 class="title" data-words>God’s Eye View</h3>
+        <p class="lede" data-reveal>A console for analysts who read numbers while looking at imagery. Coordinates, sensor data, capture history and the image itself, all visible at once, none of it crowding the rest.</p>
+        <ul class="facts" data-reveal><li>Fixed panels, no floating windows</li><li>Monospace values that line up</li><li>Open source</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="proj hold flip" data-label="AI Tools Directory">
+    <div class="hold-in proj-in">
+      <figure class="slot" data-anchor="tools" data-shape="image" style="--ar:1280/900">
+        <img src="assets/img/aitools.webp" alt="AI Tools Directory" width="1280" height="900" decoding="async">
+      </figure>
+      <div class="proj-copy">
+        <p class="eyebrow" data-reveal><span>04</span> Public directory · 2026</p>
+        <h3 class="title" data-words>AI Tools Directory</h3>
+        <p class="lede" data-reveal>Twelve hundred AI tools you can actually scan. Filters above the fold, one card pattern, and the count always visible so you know the size of what you are searching.</p>
+        <ul class="facts" data-reveal><li>1,200+ tools</li><li>Fast on a phone</li><li><a href="https://kevinpratap.github.io/ai-tools-directory/">Open it</a></li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="clients hold" data-label="Client work">
+    <div class="hold-in clients-in">
+      <div class="clients-copy">
+        <p class="eyebrow" data-reveal>Client work, 2025 to 2026</p>
+        <h2 class="big" data-words><em>290+</em> sites for local businesses</h2>
+        <p class="lede" data-reveal>Produced, deployed and verified by a pipeline I built. The ones that mattered, I finished by hand.</p>
+      </div>
+      <div class="slots3" data-anchor="clients" data-shape="images">
+        <figure class="slot"><img src="assets/img/clinic.webp" alt="Dental clinic site" width="765" height="890" decoding="async"></figure>
+        <figure class="slot"><img src="assets/img/gym.webp" alt="Gym site" width="765" height="950" decoding="async"></figure>
+        <figure class="slot"><img src="assets/img/salon.webp" alt="Salon site" width="900" height="1068" decoding="async"></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="systems hold" id="systems" data-label="Systems">
+    <div class="hold-in systems-in">
+      <div class="systems-head">
+        <p class="eyebrow" data-reveal>The AI engineering side</p>
+        <h2 class="big" data-words>Systems that run <em>while nobody’s watching</em></h2>
+      </div>
+      <div class="ribbon" data-anchor="flow" data-shape="ribbon" aria-hidden="true"></div>
+      <ol class="sys-list" data-reveal>
+        <li><b>Lead pipeline</b><span>Scrapes local businesses, generates and deploys a site for each, then reaches out with rate limits and an audit pass before anything sends.</span></li>
+        <li><b>Agentic workflows</b><span>A strategy agent hands work to workers with MCP tools on a schedule. Quality gates send weak output back, not forward.</span></li>
+        <li><b>Nebula</b><span>Interview assistant. Whisper transcribes offline, answers land in a frameless overlay on top of the call.</span></li>
+        <li><b>Hermes dashboard</b><span>A control surface for agent sessions, cron jobs and skills, with run history and live output.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="cast hold" id="cast" data-label="Cast">
+    <div class="hold-in cast-in">
+      <div class="cast-shape" data-anchor="hand" data-shape="hand" aria-hidden="true"></div>
+      <div class="cast-copy">
+        <p class="eyebrow" data-reveal><span class="rec"></span> Latest build</p>
+        <h2 class="huge" data-words><em>Cast</em></h2>
+        <p class="lede" data-reveal>Superpowers from real hand signs, in your browser. MediaPipe tracks your hands on your own device, and every sign drives real particle physics. Eight heroes, each move keyed to a specific sign.</p>
+        <div class="ctas" data-reveal>
+          <a class="btn" href="cast/">Open Cast <i aria-hidden="true">→</i></a>
+          <a class="link" href="cast/?demo&amp;auto">Watch the demo, no camera</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="more" data-anchor="galaxy" data-shape="galaxy" data-label="Everything else">
+    <div class="more-in">
+      <p class="eyebrow" data-reveal>Everything else shipped</p>
+      <h2 class="big" data-words>Fourteen more, <em>all real</em></h2>
+      <ol class="list">
+        <li><a href="https://vfile.in/pfi-pwa/"><span class="l-n">01</span><span class="l-t">PFI field agent portal</span><span class="l-d">Loan verification PWA, offline tolerant</span><span class="l-s">Next.js · Express</span></a></li>
+        <li><div><span class="l-n">02</span><span class="l-t">Machines Dealer</span><span class="l-d">Industrial marketplace rebuild, 18 security and SEO fixes</span><span class="l-s">Laravel · MySQL</span></div></li>
+        <li><div><span class="l-n">03</span><span class="l-t">Mousy</span><span class="l-d">Desktop assistant with its own shell and a pixel pet</span><span class="l-s">Electron</span></div></li>
+        <li><a href="https://github.com/KevinPratap/saathi-android"><span class="l-n">04</span><span class="l-t">Saathi</span><span class="l-d">Screen to vision model to Hindi speech, for elderly users</span><span class="l-s">Kotlin · Compose</span></a></li>
+        <li><a href="https://github.com/KevinPratap/nebula-interview-ai"><span class="l-n">05</span><span class="l-t">Nebula Interview AI</span><span class="l-d">Live transcription in a frameless overlay, offline</span><span class="l-s">Electron · Whisper</span></a></li>
+        <li><a href="https://github.com/KevinPratap/24-week-transformation"><span class="l-n">06</span><span class="l-t">24 Week Transformation</span><span class="l-d">Fitness tracker with cron pushed daily content</span><span class="l-s">Next.js · PWA</span></a></li>
+        <li><a href="https://github.com/KevinPratap/hermes-web-dashboard"><span class="l-n">07</span><span class="l-t">Hermes web dashboard</span><span class="l-d">Sessions, cron jobs and skills for agents</span><span class="l-s">Vue · FastAPI</span></a></li>
+        <li><a href="https://github.com/KevinPratap/agentic-workflows"><span class="l-n">08</span><span class="l-t">Agentic workflows</span><span class="l-d">Hierarchical agents with quality gates</span><span class="l-s">Python · MCP</span></a></li>
+        <li><a href="https://github.com/KevinPratap/mentalist-academy"><span class="l-n">09</span><span class="l-t">Mentalist Academy</span><span class="l-d">Training app for observation and memory</span><span class="l-s">Next.js · Prisma</span></a></li>
+        <li><div><span class="l-n">10</span><span class="l-t">Synapse</span><span class="l-d">Notes organised into a knowledge graph</span><span class="l-s">Flutter</span></div></li>
+        <li><a href="https://github.com/KevinPratap/shorts-factory"><span class="l-n">11</span><span class="l-t">Shorts Factory</span><span class="l-d">Source video in, generated clips out</span><span class="l-s">Python · ffmpeg</span></a></li>
+        <li><div><span class="l-n">12</span><span class="l-t">Content pipelines</span><span class="l-d">Scheduled posting with failure recovery</span><span class="l-s">Python · CDP</span></div></li>
+        <li><a href="https://github.com/KevinPratap/Real-Time-Sign-Language-to-Text-Translator"><span class="l-n">13</span><span class="l-t">Sign language to text</span><span class="l-d">Real time computer vision, earlier ML work</span><span class="l-s">Python · CV</span></a></li>
+        <li><a href="https://www.amazon.com/-/e/B0H6L5ZK6V"><span class="l-n">14</span><span class="l-t">AI Agents for Beginners</span><span class="l-d">A 200 page book, written and produced solo</span><span class="l-s">Amazon KDP</span></a></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="contact" id="contact" data-label="Contact">
+    <div class="contact-in" data-anchor="ring" data-shape="ring">
+      <p class="eyebrow" data-reveal>Contact</p>
+      <h2 class="huge" data-words>Got something <em>that doesn’t exist yet?</em></h2>
+      <button class="mail" type="button" data-mail="pratapkevin8@gmail.com"><span class="mail-a">pratapkevin8@gmail.com</span><span class="mail-c">Copy</span></button>
+      <ul class="links" data-reveal>
         <li><a href="mailto:pratapkevin8@gmail.com">Email</a></li>
         <li><a href="https://in.linkedin.com/in/kevin-sidhu-71b127185">LinkedIn</a></li>
         <li><a href="https://github.com/KevinPratap">GitHub</a></li>
         <li><a href="tel:+918264792493">+91 82647 92493</a></li>
       </ul>
     </div>
-  </div>
-  <div class="eot" aria-hidden="true">
-    <canvas class="eot-line"></canvas>
-    <p>End of transmission</p>
-  </div>
-  <footer class="foot wrap">
-    <p>Kevin Pratap Sidhu, Mumbai. Hand built: no framework, no template, raw WebGL. Every sound on this page is synthesized live in your browser with the Web Audio API.</p>
-    <p><a href="print/">Plain version, prints clean to PDF</a></p>
-  </footer>
-</section>
+    <footer class="foot">
+      <p>Built by hand: one canvas, one cloud of particles, every sound synthesized live in your browser.</p>
+      <p><a href="print/">Plain version, prints to PDF</a></p>
+    </footer>
+  </section>
 
 </main>
 
-<script src="assets/vendor/gsap.min.js" defer></script>
-<script src="assets/vendor/ScrollTrigger.min.js" defer></script>
 <script src="assets/vendor/lenis.min.js" defer></script>
 <script type="module" src="assets/js/main.js"></script>
 </body>
