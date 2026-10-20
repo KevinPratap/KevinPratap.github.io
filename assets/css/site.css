@@ -244,3 +244,5 @@ html.js .list li.in{opacity:1;transform:none}
 .stack-list dd{margin:0;line-height:1.5}
 .stack-cta{margin-top:1.5rem}
 .stack-cta a{text-decoration:underline;text-underline-offset:.2em}
+
+.proj-copy .lede + .lede{margin-top:1rem}

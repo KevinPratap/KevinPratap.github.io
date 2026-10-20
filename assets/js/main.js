@@ -165,8 +165,8 @@ mail.addEventListener('click', async () => {
 // ───────────────────────── HUD
 const hfIdx = $('.hf-idx'), hfLabel = $('.hf-label'), hfLine = $('.hf-line');
 const navLinks = $$('.hud-nav a');
-const CHORD = { Hello: 'hello', 'Selected work': 'work', About: 'about', LedgerDesk: 'ld', 'Tripp’in AI': 'trip', 'God’s Eye View': 'gods', 'AI Tools Directory': 'tools', 'Client work': 'clients', Systems: 'systems', Cast: 'cast', 'Everything else': 'more', Contact: 'contact' };
-const NAV = { 'Selected work': '#work', LedgerDesk: '#work', 'Tripp’in AI': '#work', 'God’s Eye View': '#work', 'AI Tools Directory': '#work', 'Client work': '#work', Systems: '#systems', Cast: '#cast', Contact: '#contact' };
+const CHORD = { Hello: 'hello', 'Selected work': 'work', About: 'about', LedgerDesk: 'ld', 'Tripp’in AI': 'trip', 'God’s Eye View': 'gods', 'AI Tools Directory': 'tools', Nebula: 'trip', 'Demo sites': 'clients', Systems: 'systems', Cast: 'cast', 'Everything else': 'more', Stack: 'more', Contact: 'contact' };
+const NAV = { 'Selected work': '#work', LedgerDesk: '#work', 'Tripp’in AI': '#work', 'God’s Eye View': '#work', 'AI Tools Directory': '#work', Nebula: '#work', 'Demo sites': '#work', Systems: '#systems', Cast: '#cast', Stack: '#stack', Contact: '#contact' };
 const labelled = $$('main > section[data-label]');
 let curLabel = '';
 function hud() {

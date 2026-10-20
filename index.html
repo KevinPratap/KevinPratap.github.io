@@ -15,7 +15,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307070b'/%3E%3Cg fill='%23f2efe9'%3E%3Ccircle cx='20' cy='22' r='3'/%3E%3Ccircle cx='32' cy='18' r='3'/%3E%3Ccircle cx='44' cy='24' r='3'/%3E%3Ccircle cx='24' cy='38' r='3'/%3E%3Ccircle cx='40' cy='42' r='3'/%3E%3C/g%3E%3Ccircle cx='32' cy='31' r='4' fill='%23d4ff3a'/%3E%3C/svg%3E">
 <link rel="preload" href="assets/fonts/geist-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/instrument-serif-latin-400-italic.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/site.css?v=174414">
+<link rel="stylesheet" href="assets/css/site.css?v=174416">
 <script>document.documentElement.classList.replace('no-js','js');</script>
 </head>
 <body>
@@ -66,7 +66,7 @@
 
   <section id="work" class="work-intro" data-label="Selected work">
     <p class="eyebrow" data-reveal>Selected work</p>
-    <h2 class="huge" data-words>Four things <em>I shipped</em></h2>
+    <h2 class="huge" data-words>Five things <em>I shipped</em></h2>
   </section>
 
   <section class="proj hold" data-label="LedgerDesk">
@@ -121,6 +121,21 @@
         <h3 class="title" data-words>AI Tools Directory</h3>
         <p class="lede" data-reveal>Twelve hundred AI tools you can actually scan. Filters above the fold, one card pattern, and the count always visible so you know the size of what you are searching.</p>
         <ul class="facts" data-reveal><li>1,200+ tools</li><li>Fast on a phone</li><li><a href="https://kevinpratap.github.io/ai-tools-directory/">Open it</a></li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="proj hold flip" data-label="Nebula">
+    <div class="hold-in proj-in">
+      <figure class="slot" data-anchor="nebula" data-shape="image" style="--ar:1600/513">
+        <img src="assets/img/nebula.webp" alt="Nebula: a small pill at the top of the screen and a compact answer card showing one sentence to say and a few short points" width="1600" height="513" decoding="async">
+      </figure>
+      <div class="proj-copy">
+        <p class="eyebrow" data-reveal><span>05</span> Windows app · 2026</p>
+        <h3 class="title" data-words>Nebula</h3>
+        <p class="lede" data-reveal>A chat window is the wrong shape for a live call: nobody can read a paragraph while someone waits for an answer. Nebula listens to the call and replies with one sentence to say, then three or four short points, in a small pill at the top of the screen.</p>
+        <p class="lede" data-reveal>The hardest bug was silent. An audio capture test passed on its own while the real app heard nothing, because capture ran on a thread that never initialised COM. I now test the loop the way a user hits it: sound out of the speakers, answer on screen.</p>
+        <ul class="facts" data-reveal><li>Electron and React, a Python audio engine, a Cloudflare Worker backend</li><li>Answers capped near 90 words, built to be glanced at</li><li><a href="https://nebulainterviewai.com">nebulainterviewai.com</a></li></ul>
       </div>
     </div>
   </section>
@@ -227,7 +242,7 @@
 
 </main>
 
-<script src="assets/vendor/lenis.min.js?v=174414" defer></script>
-<script type="module" src="assets/js/main.js?v=174414"></script>
+<script src="assets/vendor/lenis.min.js?v=174416" defer></script>
+<script type="module" src="assets/js/main.js?v=174416"></script>
 </body>
 </html>
