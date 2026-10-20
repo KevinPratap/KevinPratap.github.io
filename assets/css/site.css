@@ -235,3 +235,12 @@ html.js .list li.in{opacity:1;transform:none}
   .wd>span{transform:none;transition:none}
   *{animation:none!important}
 }
+
+/* stack section */
+.stack{padding:clamp(4rem,10vh,8rem) var(--gutter,1.5rem);position:relative;z-index:2}
+.stack-in{max-width:68rem;margin:0 auto}
+.stack-list{display:grid;gap:1.25rem 3rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));margin:1.5rem 0}
+.stack-list dt{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;opacity:.6;margin-bottom:.35rem}
+.stack-list dd{margin:0;line-height:1.5}
+.stack-cta{margin-top:1.5rem}
+.stack-cta a{text-decoration:underline;text-underline-offset:.2em}
